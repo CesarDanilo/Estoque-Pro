@@ -15,7 +15,7 @@ const ui = useUiStore()
     <AppSidebar />
 
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4">
+      <header class="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background px-4">
         <Button
           variant="ghost"
           size="icon"

@@ -83,7 +83,7 @@ function ativo(url, exato) {
     ]"
   >
     <!-- Header -->
-    <div class="flex min-w-0 items-center gap-2.5 border-b px-3 py-3">
+    <div class="flex min-w-0 items-center gap-2.5 border-b px-3 py-3 h-16">
       <div class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
         <Boxes class="size-5" aria-hidden="true" />
       </div>
@@ -94,7 +94,7 @@ function ativo(url, exato) {
     </div>
 
     <!-- Navegação -->
-    <nav class="flex-1 space-y-4 overflow-y-auto px-2 py-3">
+    <nav class="flex-1 space-y-4 overflow-y-auto px-4 py-3">
       <div v-for="secao in secoes" :key="secao.label">
         <p
           v-if="!sidebarCollapsed"
