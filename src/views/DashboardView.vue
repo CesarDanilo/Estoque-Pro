@@ -37,7 +37,7 @@ onMounted(() => {
 
 const hoje = '2026-08-10'
 
-// ---------- Totais gerais (não mais limitado a um período de 7 dias) ----------
+// ---------- Totais gerais ----------
 const vendasHoje = computed(() => vendas.filter((v) => v.data === hoje && v.status !== 'cancelada'))
 const totalHoje = computed(() =>
   vendasHoje.value.reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
@@ -60,17 +60,18 @@ const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0 && p
 const atencao = computed(() => [...semEstoque.value, ...baixos.value])
 
 // ---------- Atividades recentes: todas as movimentações, mais recentes primeiro ----------
+// mantém o id original de cada entidade (venda/compra) para poder linkar pra tela certa
 const atividades = computed(() =>
   [
     ...vendas.map((v) => ({
-      id: `venda-${v.id}`,
+      id: v.id,
       tipo: 'saida',
       titulo: `Venda ${v.numero} · ${v.cliente}`,
       data: v.data,
       valor: totalDoc(v.itens, v.desconto),
     })),
     ...compras.map((c) => ({
-      id: `compra-${c.id}`,
+      id: c.id,
       tipo: 'entrada',
       titulo: `Compra ${c.numero} · ${c.fornecedor}`,
       data: c.data,
@@ -78,6 +79,10 @@ const atividades = computed(() =>
     })),
   ].sort((a, b) => (a.data < b.data ? 1 : -1))
 )
+
+function rotaAtividade(a) {
+  return a.tipo === 'saida' ? `/vendas/${a.id}` : `/compras/${a.id}`
+}
 
 // ---------- Gráfico: vendas x compras por dia (Line/Area) ----------
 const chartDataVendasCompras = computed(() => ({
@@ -141,7 +146,16 @@ const chartOptionsVendasCompras = {
   },
 }
 
-// ---------- Gráfico: vendas por grupo (Bar horizontal) ----------
+// ---------- Gráfico: vendas por grupo (Bar horizontal, com rolagem) ----------
+// altura cresce com a quantidade de grupos/marcas; o container de fora
+// (max-h-72 overflow-y-auto) é quem cria a barra de rolagem quando passar disso
+const ALTURA_POR_BARRA = 40
+const ALTURA_MINIMA_GRAFICO = 260
+
+const alturaGraficoGrupo = computed(() =>
+  Math.max(ALTURA_MINIMA_GRAFICO, vendasPorGrupo.length * ALTURA_POR_BARRA)
+)
+
 const chartDataGrupo = computed(() => ({
   labels: vendasPorGrupo.map((g) => g.grupo),
   datasets: [
@@ -150,6 +164,7 @@ const chartDataGrupo = computed(() => ({
       data: vendasPorGrupo.map((g) => g.valor),
       backgroundColor: '#00BC7D',
       borderRadius: 6,
+      barThickness: 22,
     },
   ],
 }))
@@ -185,7 +200,7 @@ const chartOptionsGrupo = {
           <ShoppingCart class="size-4" /> Nova compra
         </RouterLink>
       </Button>
-      <Button as-child class="bg-emerald-500 hover:bg-emerald-600 text-black" variant="primary">
+      <Button as-child class="bg-emerald-500 text-black hover:bg-emerald-600" variant="primary">
         <RouterLink to="/vendas/nova">
           <Plus class="size-4" /> Nova venda
         </RouterLink>
@@ -274,8 +289,10 @@ const chartOptionsGrupo = {
       </Section>
 
       <Section titulo="Vendas por grupo" descricao="Participação de cada categoria.">
-        <div class="h-64 p-3 md:h-72 md:p-4">
-          <Bar :data="chartDataGrupo" :options="chartOptionsGrupo" />
+        <div class="max-h-72 overflow-y-auto p-3 md:p-4">
+          <div :style="{ height: alturaGraficoGrupo + 'px' }">
+            <Bar :data="chartDataGrupo" :options="chartOptionsGrupo" />
+          </div>
         </div>
       </Section>
     </div>
@@ -289,44 +306,46 @@ const chartOptionsGrupo = {
         </template>
 
         <ul class="max-h-72 divide-y divide-border overflow-y-auto">
-          <li
-            v-for="(p, i) in maisVendidos"
-            :key="p.id"
-            class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 md:px-5"
-          >
-            <span class="grid size-6 place-items-center rounded-md bg-muted text-xs font-semibold">
-              {{ i + 1 }}
-            </span>
-            <div class="min-w-0">
-              <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-              <p class="truncate text-xs text-muted-foreground">{{ p.grupo }}</p>
-            </div>
-            <span class="text-sm font-semibold">{{ p.vendidos30d }} un.</span>
+          <li v-for="(p, i) in maisVendidos" :key="p.id">
+            <RouterLink
+              :to="`/produtos/${p.id}`"
+              class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 md:px-5"
+            >
+              <span class="grid size-6 place-items-center rounded-md bg-muted text-xs font-semibold">
+                {{ i + 1 }}
+              </span>
+              <div class="min-w-0">
+                <p class="truncate text-sm font-medium">{{ p.nome }}</p>
+                <p class="truncate text-xs text-muted-foreground">{{ p.grupo }}</p>
+              </div>
+              <span class="text-sm font-semibold">{{ p.vendidos30d }} un.</span>
+            </RouterLink>
           </li>
         </ul>
       </Section>
 
       <Section titulo="Atividades recentes" descricao="Todas as movimentações de estoque.">
         <ul class="max-h-72 divide-y divide-border overflow-y-auto">
-          <li
-            v-for="a in atividades"
-            :key="a.id"
-            class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 md:px-5"
-          >
-            <span
-              class="grid size-7 place-items-center rounded-lg"
-              :class="a.tipo === 'saida' ? 'bg-primary/15 text-primary' : 'bg-blue-500/15 text-blue-600'"
+          <li v-for="a in atividades" :key="`${a.tipo}-${a.id}`">
+            <RouterLink
+              :to="rotaAtividade(a)"
+              class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 md:px-5"
             >
-              <ArrowUpRight v-if="a.tipo === 'saida'" class="size-4" aria-hidden="true" />
-              <ArrowDownRight v-else class="size-4" aria-hidden="true" />
-            </span>
-            <div class="min-w-0">
-              <p class="truncate text-sm font-medium">{{ a.titulo }}</p>
-              <p class="text-xs text-muted-foreground">
-                {{ dataBR(a.data) }} · {{ a.tipo === 'saida' ? 'saída de estoque' : 'entrada de estoque' }}
-              </p>
-            </div>
-            <span class="text-sm font-semibold">{{ brl(a.valor) }}</span>
+              <span
+                class="grid size-7 place-items-center rounded-lg"
+                :class="a.tipo === 'saida' ? 'bg-primary/15 text-primary' : 'bg-blue-500/15 text-blue-600'"
+              >
+                <ArrowUpRight v-if="a.tipo === 'saida'" class="size-4" aria-hidden="true" />
+                <ArrowDownRight v-else class="size-4" aria-hidden="true" />
+              </span>
+              <div class="min-w-0">
+                <p class="truncate text-sm font-medium">{{ a.titulo }}</p>
+                <p class="text-xs text-muted-foreground">
+                  {{ dataBR(a.data) }} · {{ a.tipo === 'saida' ? 'saída de estoque' : 'entrada de estoque' }}
+                </p>
+              </div>
+              <span class="text-sm font-semibold">{{ brl(a.valor) }}</span>
+            </RouterLink>
           </li>
         </ul>
       </Section>
