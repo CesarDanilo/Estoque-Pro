@@ -86,7 +86,7 @@ const chartDataVendasCompras = computed(() => ({
     {
       label: 'Vendas',
       data: vendasPorDia.map((d) => d.vendas),
-      borderColor: '#31CA92',
+      borderColor: '#00BC7D',
       backgroundColor: 'rgba(49, 202, 146, 0.15)',
       fill: true,
       tension: 0.35,
@@ -148,7 +148,7 @@ const chartDataGrupo = computed(() => ({
     {
       label: 'Vendas',
       data: vendasPorGrupo.map((g) => g.valor),
-      backgroundColor: '#31CA92',
+      backgroundColor: '#00BC7D',
       borderRadius: 6,
     },
   ],
@@ -185,7 +185,7 @@ const chartOptionsGrupo = {
           <ShoppingCart class="size-4" /> Nova compra
         </RouterLink>
       </Button>
-      <Button as-child>
+      <Button as-child class="bg-emerald-500 hover:bg-emerald-600 text-black" variant="primary">
         <RouterLink to="/vendas/nova">
           <Plus class="size-4" /> Nova venda
         </RouterLink>
