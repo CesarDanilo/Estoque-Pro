@@ -79,8 +79,8 @@ const chartDataVendasCompras = computed(() => ({
     {
       label: 'Vendas',
       data: vendasPorDia.map((d) => d.vendas),
-      borderColor: '#6366f1',
-      backgroundColor: 'rgba(99,102,241,0.15)',
+      borderColor: '#31CA92',
+      backgroundColor: 'rgba(49, 202, 146, 0.15)',
       fill: true,
       tension: 0.35,
       pointRadius: 0,
@@ -88,7 +88,7 @@ const chartDataVendasCompras = computed(() => ({
     {
       label: 'Compras',
       data: vendasPorDia.map((d) => d.compras),
-      borderColor: '#10b981',
+      borderColor: '#F97316',
       backgroundColor: 'transparent',
       borderDash: [4, 4],
       fill: false,
@@ -125,7 +125,7 @@ const chartDataGrupo = computed(() => ({
     {
       label: 'Vendas',
       data: vendasPorGrupo.map((g) => g.valor),
-      backgroundColor: '#6366f1',
+      backgroundColor: '#31CA92',
       borderRadius: 6,
     },
   ],
