@@ -98,7 +98,6 @@ export const compras = [
 
 export const maisVendidos = [...produtos]
   .sort((a, b) => b.vendidos30d - a.vendidos30d)
-  .slice(0, 5)
   .map((p) => ({ id: p.id, nome: p.nome, grupo: p.grupo, vendidos30d: p.vendidos30d }))
 
 export const vendasPorDia = [

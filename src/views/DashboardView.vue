@@ -31,46 +31,53 @@ import {
   vendasPorGrupo,
 } from '@/lib/mockData'
 
-// título/descrição da página — em Vue Router isso normalmente vai em route.meta,
-// aqui fica simples via document.title
 onMounted(() => {
   document.title = 'Dashboard — Estoque Pro'
 })
 
 const hoje = '2026-08-10'
 
+// ---------- Totais gerais (não mais limitado a um período de 7 dias) ----------
 const vendasHoje = computed(() => vendas.filter((v) => v.data === hoje && v.status !== 'cancelada'))
 const totalHoje = computed(() =>
   vendasHoje.value.reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
 )
-const totalPeriodo = computed(() =>
-  vendas.filter((v) => v.status !== 'cancelada').reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
+
+const vendasValidas = computed(() => vendas.filter((v) => v.status !== 'cancelada'))
+const totalVendas = computed(() =>
+  vendasValidas.value.reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
 )
+
+const comprasValidas = computed(() => compras.filter((c) => c.status !== 'cancelada'))
 const totalCompras = computed(() =>
-  compras.filter((c) => c.status !== 'cancelada').reduce((s, c) => s + totalDoc(c.itens), 0)
+  comprasValidas.value.reduce((s, c) => s + totalDoc(c.itens), 0)
 )
+
 const baixos = computed(() => produtos.filter((p) => nivelEstoque(p) === 'baixo'))
 const semEstoque = computed(() => produtos.filter((p) => nivelEstoque(p) === 'sem'))
 const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0 && p.status === 'ativo'))
 
-const atencao = computed(() => [...semEstoque.value, ...baixos.value].slice(0, 4))
+const atencao = computed(() => [...semEstoque.value, ...baixos.value])
 
-const atividades = computed(() => [
-  ...vendas.slice(0, 3).map((v) => ({
-    id: `venda-${v.id}`,
-    tipo: 'saida',
-    titulo: `Venda ${v.numero} · ${v.cliente}`,
-    data: v.data,
-    valor: totalDoc(v.itens, v.desconto),
-  })),
-  ...compras.slice(0, 2).map((c) => ({
-    id: `compra-${c.id}`,
-    tipo: 'entrada',
-    titulo: `Compra ${c.numero} · ${c.fornecedor}`,
-    data: c.data,
-    valor: totalDoc(c.itens),
-  })),
-])
+// ---------- Atividades recentes: todas as movimentações, mais recentes primeiro ----------
+const atividades = computed(() =>
+  [
+    ...vendas.map((v) => ({
+      id: `venda-${v.id}`,
+      tipo: 'saida',
+      titulo: `Venda ${v.numero} · ${v.cliente}`,
+      data: v.data,
+      valor: totalDoc(v.itens, v.desconto),
+    })),
+    ...compras.map((c) => ({
+      id: `compra-${c.id}`,
+      tipo: 'entrada',
+      titulo: `Compra ${c.numero} · ${c.fornecedor}`,
+      data: c.data,
+      valor: totalDoc(c.itens),
+    })),
+  ].sort((a, b) => (a.data < b.data ? 1 : -1))
+)
 
 // ---------- Gráfico: vendas x compras por dia (Line/Area) ----------
 const chartDataVendasCompras = computed(() => ({
@@ -84,16 +91,18 @@ const chartDataVendasCompras = computed(() => ({
       fill: true,
       tension: 0.35,
       pointRadius: 0,
+      pointHoverRadius: 4,
     },
     {
       label: 'Compras',
       data: vendasPorDia.map((d) => d.compras),
       borderColor: '#F97316',
-      backgroundColor: 'transparent',
+      backgroundColor: 'rgba(249, 115, 22, 0.12)',
       borderDash: [4, 4],
-      fill: false,
+      fill: true,
       tension: 0.35,
       pointRadius: 0,
+      pointHoverRadius: 4,
     },
   ],
 }))
@@ -101,8 +110,22 @@ const chartDataVendasCompras = computed(() => ({
 const chartOptionsVendasCompras = {
   responsive: true,
   maintainAspectRatio: false,
+  interaction: { mode: 'index', intersect: false },
   plugins: {
-    legend: { display: false },
+    legend: {
+      display: true,
+      position: 'top',
+      align: 'end',
+      labels: {
+        usePointStyle: true,
+        pointStyle: 'rectRounded',
+        boxWidth: 10,
+        boxHeight: 10,
+        padding: 16,
+        color: '#64748b',
+        font: { size: 12 },
+      },
+    },
     tooltip: {
       callbacks: {
         label: (ctx) => `${ctx.dataset.label}: ${brl(ctx.parsed.y)}`,
@@ -153,7 +176,7 @@ const chartOptionsGrupo = {
 <template>
   <PageHeader
     titulo="Dashboard"
-    descricao="Resumo dos últimos 7 dias — atualizado agora."
+    descricao="Visão geral do negócio — todos os registros."
     :trilha="[{ titulo: 'Início' }, { titulo: 'Dashboard' }]"
   >
     <template #acoes>
@@ -180,16 +203,16 @@ const chartOptionsGrupo = {
         :icone="Receipt"
       />
       <MetricCard
-        rotulo="Vendas no período"
-        :valor="brl(totalPeriodo)"
-        apoio="+12% vs. período anterior"
+        rotulo="Total de vendas"
+        :valor="brl(totalVendas)"
+        :apoio="`${vendasValidas.length} vendas no total`"
         tom="success"
         :icone="TrendingUp"
       />
       <MetricCard
-        rotulo="Compras no período"
+        rotulo="Total de compras"
         :valor="brl(totalCompras)"
-        :apoio="`${compras.length} compras lançadas`"
+        :apoio="`${comprasValidas.length} compras no total`"
         tom="info"
         :icone="ShoppingCart"
       />
@@ -220,20 +243,21 @@ const chartOptionsGrupo = {
       </template>
 
       <ul class="divide-y divide-border">
-        <li
-          v-for="p in atencao"
-          :key="p.id"
-          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 md:px-5"
-        >
-          <div class="min-w-0">
-            <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-            <p class="truncate text-xs text-muted-foreground">
-              {{ p.sku }} · {{ p.grupo }} · mínimo {{ p.minimo }} un.
-            </p>
-          </div>
-          <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : 'warning'">
-            {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un. restantes` }}
-          </StatusPill>
+        <li v-for="p in atencao" :key="p.id">
+          <RouterLink
+            :to="`/produtos/${p.id}`"
+            class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 md:px-5"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-sm font-medium">{{ p.nome }}</p>
+              <p class="truncate text-xs text-muted-foreground">
+                {{ p.sku }} · {{ p.grupo }} · mínimo {{ p.minimo }} un.
+              </p>
+            </div>
+            <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : 'warning'">
+              {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un. restantes` }}
+            </StatusPill>
+          </RouterLink>
         </li>
       </ul>
     </Section>
@@ -264,7 +288,7 @@ const chartOptionsGrupo = {
           </Button>
         </template>
 
-        <ul class="divide-y divide-border">
+        <ul class="max-h-72 divide-y divide-border overflow-y-auto">
           <li
             v-for="(p, i) in maisVendidos"
             :key="p.id"
@@ -282,8 +306,8 @@ const chartOptionsGrupo = {
         </ul>
       </Section>
 
-      <Section titulo="Atividades recentes" descricao="Últimas movimentações de estoque.">
-        <ul class="divide-y divide-border">
+      <Section titulo="Atividades recentes" descricao="Todas as movimentações de estoque.">
+        <ul class="max-h-72 divide-y divide-border overflow-y-auto">
           <li
             v-for="a in atividades"
             :key="a.id"
