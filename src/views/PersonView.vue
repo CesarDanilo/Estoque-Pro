@@ -11,7 +11,6 @@ import {
   Plus,
   Trash2,
 } from 'lucide-vue-next'
-import { toast } from 'vue-sonner'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
@@ -19,6 +18,7 @@ import EmptyState from '@/components/page-shell/EmptyState.vue'
 import TableSkeleton from '@/components/page-shell/TableSkeleton.vue'
 import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
+import { useFeedback } from '@/composables/useFeedBack'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -107,6 +107,8 @@ const visiveis = computed(() =>
   ordenadas.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA)
 )
 
+const { sucesso, info } = useFeedback()
+
 function limpar() {
   busca.value = ''
   grupo.value = 'todos'
@@ -116,11 +118,15 @@ function limpar() {
 }
 
 function exportar() {
-  toast.success('Lista exportada em CSV.')
+  sucesso('Exportação concluída', 'Lista exportada em CSV.')
+}
+
+function abrirCadastro() {
+  info('Abrindo cadastro', 'Redirecionando para o cadastro da pessoa…')
 }
 
 function confirmarExclusao() {
-  toast.success('Pessoa excluída com sucesso.')
+  sucesso('Pessoa excluída', 'A pessoa foi excluída com sucesso.')
   excluir.value = null
 }
 </script>
@@ -275,7 +281,7 @@ function confirmarExclusao() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem class="cursor-pointer" @click="toast('Abrindo cadastro…')">
+                      <DropdownMenuItem class="cursor-pointer" @click="abrirCadastro">
                         <Pencil class="size-4" /> Editar
                       </DropdownMenuItem>
                       <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = p">
@@ -328,8 +334,10 @@ function confirmarExclusao() {
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel class="cursor-pointer">Cancelar</AlertDialogCancel>
-        <AlertDialogAction class="cursor-pointer bg-red-500 text-white hover:bg-red-600" @click="confirmarExclusao">Excluir</AlertDialogAction>
-      </AlertDialogFooter> 
+        <AlertDialogAction class="cursor-pointer bg-red-500 text-white hover:bg-red-600" @click="confirmarExclusao">
+          Excluir
+        </AlertDialogAction>
+      </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
 </template>
