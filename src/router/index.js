@@ -60,6 +60,12 @@ const router = createRouter({
       component: () => import('@/views/auth/Login.vue'),
       meta: { public: true },
     },
+    {
+      path: '/cadastro',
+      name: 'cadastro',
+      component: () => import('@/views/auth/Register.vue'),
+      meta: { public: true },
+    },
   ],
 })
 

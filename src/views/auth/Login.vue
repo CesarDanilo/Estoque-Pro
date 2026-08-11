@@ -11,7 +11,6 @@ import {
   Mail,
   Moon,
   Package,
-  ShieldCheck,
   Sun,
 } from 'lucide-vue-next'
 
@@ -19,10 +18,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import AuthBrandPanel from '@/components/auth/AuthBrandPanel.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 
 const router = useRouter()
 const { sucesso } = useFeedback()
+
+const EMAIL_LEMBRADO_KEY = 'estoquepro:email'
 
 // ---------- Tema (dark/light com persistência) ----------
 const TEMA_KEY = 'estoquepro:tema'
@@ -50,7 +52,7 @@ const schema = z.object({
 const form = reactive({
   email: '',
   senha: '',
-  lembrar: true,
+  lembrar: false, // 🔴 só fica true se houver e-mail salvo (ver onMounted)
 })
 
 const erros = reactive({
@@ -60,7 +62,7 @@ const erros = reactive({
 
 const mostrarSenha = ref(false)
 const carregando = ref(false)
-const erroLogin = ref('') // mensagem amigável exibida acima do botão
+const erroLogin = ref('')
 
 const podeEnviar = computed(() => form.email.length > 0 && form.senha.length > 0 && !carregando.value)
 
@@ -99,16 +101,16 @@ async function entrar() {
       }, 900)
     )
 
+    // "Lembrar meu e-mail" — funcional: só grava/mantém se o checkbox estiver marcado
     if (form.lembrar) {
-      localStorage.setItem('estoquepro:email', form.email)
+      localStorage.setItem(EMAIL_LEMBRADO_KEY, form.email.trim())
     } else {
-      localStorage.removeItem('estoquepro:email')
+      localStorage.removeItem(EMAIL_LEMBRADO_KEY)
     }
 
     sucesso('Bem-vindo de volta', 'Login realizado com sucesso.')
     router.push('/')
-  } catch (e) {
-    // Mensagem amigável — ajuste conforme os códigos de erro reais da sua API
+  } catch {
     erroLogin.value = 'E-mail ou senha incorretos. Verifique os dados e tente novamente.'
   } finally {
     carregando.value = false
@@ -116,14 +118,10 @@ async function entrar() {
 }
 
 // 🔴 AQUI: implemente a integração real com o provedor OAuth (ex: Google Identity Services)
-// Remova o botão no template caso o sistema não tenha suporte a login social.
 function entrarComGoogle() {
   erroLogin.value = ''
   sucesso('Em breve', 'Login com Google ainda não está disponível.')
 }
-
-// ---------- Textura decorativa do painel de marca ----------
-const barras = [30, 50, 38, 65, 45, 72, 55, 80, 60]
 
 onMounted(() => {
   document.title = 'Entrar — Estoque Pro'
@@ -132,14 +130,17 @@ onMounted(() => {
   escuro.value = salvo ? salvo === 'dark' : true
   aplicarTema(escuro.value)
 
-  const emailSalvo = localStorage.getItem('estoquepro:email')
-  if (emailSalvo) form.email = emailSalvo
+  // Reflete o estado real: só marca "lembrar" se houver e-mail salvo de fato
+  const emailSalvo = localStorage.getItem(EMAIL_LEMBRADO_KEY)
+  if (emailSalvo) {
+    form.email = emailSalvo
+    form.lembrar = true
+  }
 })
 </script>
 
 <template>
   <div class="grid min-h-screen grid-cols-1 bg-background text-foreground lg:grid-cols-[1fr_1.15fr]">
-    <!-- Seletor de tema — discreto, fora do fluxo do formulário -->
     <Button
       type="button"
       variant="ghost"
@@ -152,49 +153,11 @@ onMounted(() => {
       <Moon v-else class="size-4" aria-hidden="true" />
     </Button>
 
-    <!-- Painel de marca -->
-    <aside class="relative hidden flex-col justify-between overflow-hidden bg-[#06120d] p-12 lg:flex">
-      <div
-        class="pointer-events-none absolute inset-0"
-        style="background-image: radial-gradient(circle at 15% 10%, rgba(0,188,125,0.18), transparent 45%), radial-gradient(circle at 85% 90%, rgba(0,188,125,0.12), transparent 40%);"
-      />
-      <div
-        class="pointer-events-none absolute inset-x-0 bottom-0 flex h-40 items-end gap-3 px-12 opacity-[0.08]"
-      >
-        <div
-          v-for="(altura, i) in barras"
-          :key="i"
-          class="flex-1 rounded-t-sm bg-emerald-400"
-          :style="{ height: altura + '%' }"
-        />
-      </div>
+    <AuthBrandPanel
+      titulo="Estoque sob controle,<br /> decisões mais rápidas."
+      descricao="Centralize vendas, compras e reposição em um único painel — sem planilha, sem retrabalho e sem surpresa no fim do mês."
+    />
 
-      <div class="relative flex items-center gap-2.5">
-        <span class="grid size-9 place-items-center rounded-lg bg-emerald-500/15 text-emerald-400">
-          <Package class="size-5" aria-hidden="true" />
-        </span>
-        <span class="text-lg font-semibold tracking-tight text-white">Estoque Pro</span>
-      </div>
-
-      <div class="relative max-w-md space-y-5">
-        <h1 class="text-3xl font-semibold leading-tight text-white">
-          Estoque sob controle,<br /> decisões mais rápidas.
-        </h1>
-        <p class="text-sm leading-relaxed text-white/60">
-          Centralize vendas, compras e reposição em um único painel — sem planilha, sem
-          retrabalho e sem surpresa no fim do mês.
-        </p>
-
-        <div class="flex items-center gap-2.5 pt-2 text-xs text-white/50">
-          <ShieldCheck class="size-4 shrink-0 text-emerald-400" aria-hidden="true" />
-          Acesso individual por usuário, com seus dados protegidos.
-        </div>
-      </div>
-
-      <p class="relative text-xs text-white/30">© {{ new Date().getFullYear() }} Estoque Pro. Todos os direitos reservados.</p>
-    </aside>
-
-    <!-- Painel do formulário -->
     <main class="flex flex-col justify-center px-6 py-10 sm:px-10 md:px-16 lg:px-24">
       <div class="mx-auto w-full max-w-md">
         <div class="mb-8 flex items-center gap-2.5 lg:hidden">
@@ -206,9 +169,7 @@ onMounted(() => {
 
         <div class="mb-8 space-y-1.5">
           <h2 class="text-2xl font-semibold tracking-tight">Acesse sua conta</h2>
-          <p class="text-sm text-muted-foreground">
-            Entre com suas credenciais para continuar.
-          </p>
+          <p class="text-sm text-muted-foreground">Entre com suas credenciais para continuar.</p>
         </div>
 
         <form class="space-y-5" novalidate @submit.prevent="entrar">
@@ -271,7 +232,6 @@ onMounted(() => {
             </Label>
           </div>
 
-          <!-- Erro de autenticação -->
           <div
             v-if="erroLogin"
             class="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400"
@@ -291,19 +251,13 @@ onMounted(() => {
           </Button>
         </form>
 
-        <!-- Login social — remova se o sistema não tiver suporte a OAuth -->
         <div class="my-6 flex items-center gap-3">
           <span class="h-px flex-1 bg-border" />
           <span class="text-xs text-muted-foreground">ou continue com</span>
           <span class="h-px flex-1 bg-border" />
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          class="w-full cursor-pointer"
-          @click="entrarComGoogle"
-        >
+        <Button type="button" variant="outline" class="w-full cursor-pointer" @click="entrarComGoogle">
           <svg class="size-4" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.87c2.27-2.09 3.58-5.17 3.58-8.82Z" />
             <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.87-3c-1.08.72-2.45 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.95H1.28v3.1A11.998 11.998 0 0 0 12 24Z" />
@@ -313,9 +267,10 @@ onMounted(() => {
           Continuar com Google
         </Button>
 
-        <div class="mt-8 space-y-2 text-center">
-          <p class="text-xs text-muted-foreground">
-            Precisa de acesso? Solicite ao administrador da sua empresa.
+        <div class="mt-8 space-y-3 text-center">
+          <p class="text-sm text-muted-foreground">
+            Não tem uma conta?
+            <RouterLink to="/cadastro" class="font-medium text-emerald-500 hover:text-emerald-400">Criar conta</RouterLink>
           </p>
           <p class="text-xs text-muted-foreground">
             <a href="mailto:suporte@estoquepro.com" class="hover:text-foreground">Precisa de ajuda? Fale com o suporte</a>
