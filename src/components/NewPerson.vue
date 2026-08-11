@@ -37,7 +37,7 @@ const emit = defineEmits(['update:open', 'created'])
 const { sucesso, erro } = useFeedback()
 
 const NOME_MAX = 120
-const EMAIL_MAX = 254
+const EMAIL_MAX = 120
 
 const documento = useDocumentMask()
 const telefone = usePhoneMask()
@@ -56,6 +56,16 @@ const form = reactive({
   endereco: '',
   ativo: true,
   observacoes: '',
+})
+
+// v-model controlado via computed, mesmo padrão do campo de busca da listagem —
+// evita o bug de reconciliação do binding manual (:value + @input) que
+// esvaziava o campo ao perder o foco.
+const emailModel = computed({
+  get: () => email.value,
+  set: (v) => {
+    email.value = (v ?? '').slice(0, EMAIL_MAX)
+  },
 })
 
 // badge do CPF/CNPJ: cinza/neutra até o usuário digitar, depois assume a cor do tipo detectado
@@ -88,7 +98,7 @@ function resetar() {
   telefone.setValue('')
   cep.setValue('')
   email.value = ''
-  email.status.value = 'idle'
+  email.status = 'idle'
   Object.keys(erros).forEach((chave) => delete erros[chave])
 }
 
@@ -187,13 +197,12 @@ async function salvar() {
 
           <div>
             <label for="documento" class="mb-1 flex items-center gap-2 text-sm font-medium">
-              <span class="text-destructive">*</span>
               <span
                 class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors"
                 :class="documentoBadge.classe"
               >
                 {{ documentoBadge.texto }}
-              </span>
+              </span><span class="text-destructive">*</span>
             </label>
             <input
               id="documento"
@@ -244,8 +253,8 @@ async function salvar() {
           </div>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-2">
-          <div>
+        <div class="grid gap-4 md:grid-cols-5">
+          <div class="md:col-span-2">
             <label for="telefone" class="mb-1 block text-sm font-medium">
               Telefone <span class="text-destructive">*</span>
             </label>
@@ -261,22 +270,21 @@ async function salvar() {
             <p v-if="erros.telefone" class="mt-1 text-xs text-destructive">{{ erros.telefone }}</p>
           </div>
 
-          <div>
+          <div class="md:col-span-3">
             <label for="email" class="mb-1 block text-sm font-medium">E-mail</label>
             <div class="relative">
               <input
                 id="email"
-                :value="email.value"
+                v-model="emailModel"
                 :maxlength="EMAIL_MAX"
                 type="email"
                 placeholder="nome@email.com"
                 class="h-10 w-full cursor-text rounded-md border bg-transparent px-3 pr-16 text-sm outline-none focus:ring-2 focus:ring-ring"
                 :class="{
-                  'border-destructive': email.status.value === 'invalid' || erros.email,
-                  'border-emerald-500': email.status.value === 'valid',
-                  'border-input': email.status.value === 'idle' && !erros.email,
+                  'border-destructive': email.status === 'invalid' || erros.email,
+                  'border-emerald-500': email.status === 'valid',
+                  'border-input': email.status === 'idle' && !erros.email,
                 }"
-                @input="email.onInput"
               />
               <span
                 class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
@@ -285,7 +293,7 @@ async function salvar() {
                 {{ email.value.length }}/{{ EMAIL_MAX }}
               </span>
             </div>
-            <p v-if="email.status.value === 'invalid' || erros.email" class="mt-1 text-xs text-destructive">
+            <p v-if="email.status === 'invalid' || erros.email" class="mt-1 text-xs text-destructive">
               {{ erros.email || 'Informe um e-mail válido.' }}
             </p>
           </div>
@@ -318,12 +326,20 @@ async function salvar() {
             <label for="ativo" class="text-sm font-medium">Pessoa ativa</label>
             <p class="text-xs text-muted-foreground">Inativas não aparecem em novas vendas.</p>
           </div>
-          <Switch id="ativo" v-model="form.ativo" class="cursor-pointer" />
+          <Switch
+            id="ativo"
+            v-model="form.ativo"
+            class="cursor-pointer data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-input"
+          />
         </div>
 
         <DialogFooter class="pt-2">
           <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">Cancelar</Button>
-          <Button type="submit" :disabled="salvando" class="cursor-pointer">
+          <Button
+            type="submit"
+            :disabled="salvando"
+            class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+          >
             <Loader2 v-if="salvando" class="size-4 animate-spin" />
             <Save v-else class="size-4" />
             {{ salvando ? 'Salvando…' : 'Salvar pessoa' }}
