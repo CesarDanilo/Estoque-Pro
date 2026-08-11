@@ -1,7 +1,16 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Download, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-vue-next'
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Download,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
@@ -45,8 +54,21 @@ const pagina = ref(1)
 const carregando = ref(false)
 const excluir = ref(null)
 
-// qualquer mudança de filtro/busca volta pra página 1
-watch([busca, grupo, status], () => {
+// ordenação clicável nas colunas (Nome e Cadastro)
+const sortCampo = ref(null) // 'nome' | 'cadastro' | null
+const sortDirecao = ref('asc') // 'asc' | 'desc'
+
+function ordenarPor(campo) {
+  if (sortCampo.value === campo) {
+    sortDirecao.value = sortDirecao.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortCampo.value = campo
+    sortDirecao.value = 'asc'
+  }
+}
+
+// qualquer mudança de filtro/busca/ordenação volta pra página 1
+watch([busca, grupo, status, sortCampo, sortDirecao], () => {
   pagina.value = 1
 })
 
@@ -62,17 +84,39 @@ const filtradas = computed(() =>
   )
 )
 
-const totalPaginas = computed(() => Math.max(1, Math.ceil(filtradas.value.length / PORPAGINA)))
+const ordenadas = computed(() => {
+  if (!sortCampo.value) return filtradas.value
+
+  const lista = [...filtradas.value]
+  const mult = sortDirecao.value === 'asc' ? 1 : -1
+
+  lista.sort((a, b) => {
+    if (sortCampo.value === 'nome') {
+      return a.nome.localeCompare(b.nome, 'pt-BR') * mult
+    }
+    // 'cadastro' vem como 'AAAA-MM-DD', comparação de string já ordena certo
+    return a.cadastro.localeCompare(b.cadastro) * mult
+  })
+
+  return lista
+})
+
+const totalPaginas = computed(() => Math.max(1, Math.ceil(ordenadas.value.length / PORPAGINA)))
 const paginaAtual = computed(() => Math.min(pagina.value, totalPaginas.value))
 const visiveis = computed(() =>
-  filtradas.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA)
+  ordenadas.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA)
 )
 
 function limpar() {
   busca.value = ''
   grupo.value = 'todos'
   status.value = 'todos'
+  sortCampo.value = null
   pagina.value = 1
+}
+
+function exportar() {
+  toast.success('Lista exportada em CSV.')
 }
 
 function confirmarExclusao() {
@@ -88,10 +132,10 @@ function confirmarExclusao() {
     :trilha="[{ titulo: 'Gestão' }, { titulo: 'Pessoas' }]"
   >
     <template #acoes>
-      <Button variant="outline" @click="toast.success('Lista exportada em CSV.')">
+      <Button variant="outline" @click="exportar">
         <Download class="size-4" /> Exportar
       </Button>
-      <Button as-child>
+      <Button as-child class="bg-emerald-500 text-black hover:bg-emerald-600">
         <RouterLink to="/pessoas/nova">
           <Plus class="size-4" /> Nova pessoa
         </RouterLink>
@@ -106,9 +150,9 @@ function confirmarExclusao() {
           v-model="busca"
           label="Buscar pessoa por nome, documento, telefone ou e-mail"
           placeholder="Buscar por nome, documento ou telefone…"
-          class="md:max-w-sm"
+          class="w-full md:max-w-md lg:max-w-lg"
         />
-        <div class="grid grid-cols-2 gap-2 md:ml-auto md:flex">
+        <div class="grid grid-cols-2 gap-2 md:ml-auto md:flex md:shrink-0">
           <Select v-model="grupo">
             <SelectTrigger class="h-10 md:w-40" aria-label="Filtrar por grupo">
               <SelectValue placeholder="Grupo" />
@@ -151,7 +195,7 @@ function confirmarExclusao() {
       </EmptyState>
 
       <template v-else>
-        <!-- Mobile: cartões -->
+        <!-- Mobile: cartões (já seguem a mesma ordenação da tabela) -->
         <ul class="divide-y divide-border md:hidden">
           <li v-for="p in visiveis" :key="p.id" class="space-y-2 px-4 py-3.5">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
@@ -175,12 +219,34 @@ function confirmarExclusao() {
           <table class="w-full text-sm">
             <thead class="text-xs text-muted-foreground">
               <tr class="border-b border-border text-left">
-                <th class="px-5 py-3 font-medium">Nome</th>
+                <th class="px-5 py-3 font-medium">
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+                    @click="ordenarPor('nome')"
+                  >
+                    Nome
+                    <ArrowUp v-if="sortCampo === 'nome' && sortDirecao === 'asc'" class="size-3.5" />
+                    <ArrowDown v-else-if="sortCampo === 'nome' && sortDirecao === 'desc'" class="size-3.5" />
+                    <ArrowUpDown v-else class="size-3.5 opacity-40" />
+                  </button>
+                </th>
                 <th class="px-4 py-3 font-medium">Documento</th>
                 <th class="px-4 py-3 font-medium">Grupo</th>
                 <th class="px-4 py-3 font-medium">Telefone</th>
                 <th class="px-4 py-3 font-medium">Situação</th>
-                <th class="px-4 py-3 font-medium">Cadastro</th>
+                <th class="px-4 py-3 font-medium">
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+                    @click="ordenarPor('cadastro')"
+                  >
+                    Cadastro
+                    <ArrowUp v-if="sortCampo === 'cadastro' && sortDirecao === 'asc'" class="size-3.5" />
+                    <ArrowDown v-else-if="sortCampo === 'cadastro' && sortDirecao === 'desc'" class="size-3.5" />
+                    <ArrowUpDown v-else class="size-3.5 opacity-40" />
+                  </button>
+                </th>
                 <th class="px-4 py-3 text-right font-medium">Ações</th>
               </tr>
             </thead>
