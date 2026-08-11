@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import {
-  ChevronDown,
   Download,
   FileBarChart,
   Package,
+  Pencil,
+  RefreshCw,
   Search,
   ShoppingCart,
   TrendingDown,
@@ -40,6 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import NewProduct from '@/components/modal/product/NewProduct.vue'
 
 import { useFeedback } from '@/composables/useFeedBack'
 import {
@@ -81,12 +83,22 @@ function recarregar(valor) {
   }, 700)
 }
 
+function atualizarRelatorio() {
+  carregando.value = true
+  setTimeout(() => {
+    carregando.value = false
+    sucesso('Relatório atualizado', 'Os dados foram recarregados.')
+  }, 700)
+}
+
 function exportar() {
   sucesso('Relatório exportado', 'O arquivo CSV foi gerado com sucesso.')
 }
 
-// ---- Cores do tema (resolvidas em runtime a partir das CSS vars) ----
-const paleta = ref(['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4'])
+// ---- Cores do sistema (paleta fixa em tons de verde — não depende do tema) ----
+const paleta = ['#059669', '#10b981', '#34d399', '#16a34a', '#4ade80']
+
+// ---- Cores estruturais (essas seguem o tema, só afetam eixos/grade/texto) ----
 const corEixo = ref('#94a3b8')
 const corGrade = ref('#e2e8f0')
 const corPainel = ref('#ffffff')
@@ -97,7 +109,6 @@ onMounted(() => {
   const estilo = getComputedStyle(document.documentElement)
   const lerVar = (nome, fallback) => estilo.getPropertyValue(nome).trim() || fallback
 
-  paleta.value = [1, 2, 3, 4, 5].map((n) => lerVar(`--chart-${n}`, paleta.value[n - 1]))
   corEixo.value = lerVar('--muted-foreground', corEixo.value)
   corGrade.value = lerVar('--border', corGrade.value)
   corPainel.value = lerVar('--popover', corPainel.value)
@@ -116,6 +127,32 @@ const tooltipBase = computed(() => ({
   displayColors: false,
 }))
 
+// ==================================================================
+// MODAL DE EDIÇÃO DE PRODUTO (aberto pelas listas clicáveis)
+// ==================================================================
+const produtoModalAberto = ref(false)
+const produtoEditando = ref(null)
+
+function editarProduto(produto) {
+  if (!produto) return
+  produtoEditando.value = produto
+  produtoModalAberto.value = true
+}
+
+function produtoSalvo(dados) {
+  const alvo = produtoEditando.value
+  if (alvo) {
+    const idx = produtos.findIndex((p) => p.id === alvo.id)
+    if (idx !== -1) produtos[idx] = { ...produtos[idx], ...dados }
+  }
+  sucesso('Produto atualizado', `${dados?.nome ?? alvo?.nome ?? 'Produto'} foi atualizado.`)
+  produtoEditando.value = null
+}
+
+function detalheProduto(id) {
+  return produtos.find((p) => p.id === id) ?? null
+}
+
 // ---- Dados derivados ----
 const porGrupoPessoas = computed(() =>
   ['Cliente', 'Fornecedor', 'Colaborador'].map((g) => ({
@@ -131,6 +168,37 @@ const porGeneroPessoas = computed(() =>
   }))
 )
 const totalPessoasGenero = computed(() => porGeneroPessoas.value.reduce((s, p) => s + p.valor, 0))
+
+// ---- Pessoas por faixa etária (a partir de `nascimento`) ----
+function calcularIdade(nascimento) {
+  if (!nascimento) return null
+  const nasc = new Date(nascimento)
+  if (isNaN(nasc.getTime())) return null
+  const hoje = new Date()
+  let idade = hoje.getFullYear() - nasc.getFullYear()
+  const m = hoje.getMonth() - nasc.getMonth()
+  if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) idade--
+  return idade
+}
+
+function faixaEtaria(idade) {
+  if (idade === null) return 'Não informado'
+  if (idade < 26) return '18-25'
+  if (idade < 36) return '26-35'
+  if (idade < 46) return '36-45'
+  if (idade < 61) return '46-60'
+  return '60+'
+}
+
+const pessoasPorFaixaEtaria = computed(() => {
+  const ordem = ['18-25', '26-35', '36-45', '46-60', '60+', 'Não informado']
+  const contagem = Object.fromEntries(ordem.map((f) => [f, 0]))
+  pessoas.forEach((p) => {
+    const faixa = faixaEtaria(calcularIdade(p.nascimento))
+    contagem[faixa] = (contagem[faixa] ?? 0) + 1
+  })
+  return ordem.map((f) => ({ nome: f, valor: contagem[f] }))
+})
 
 const comprasPorFornecedor = computed(() =>
   Array.from(new Set(compras.map((c) => c.fornecedor))).map((f) => ({
@@ -151,6 +219,20 @@ function alternarGrupo(nome) {
   grupoAtivo.value = grupoAtivo.value === nome ? null : nome
 }
 
+// ---- Produtos por marca ----
+const produtosPorMarca = computed(() =>
+  Array.from(new Set(produtos.map((p) => p.marca).filter(Boolean)))
+    .map((m) => ({ nome: m, valor: produtos.filter((p) => p.marca === m).length }))
+    .sort((a, b) => b.valor - a.valor)
+)
+
+// ---- Produtos ativos x inativos ----
+const produtosPorStatus = computed(() => [
+  { nome: 'Ativos', valor: produtos.filter((p) => p.status === 'ativo').length },
+  { nome: 'Inativos', valor: produtos.filter((p) => p.status === 'inativo').length },
+])
+const totalProdutosStatus = computed(() => produtosPorStatus.value.reduce((s, p) => s + p.valor, 0))
+
 const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0))
 const baixos = computed(() => produtos.filter((p) => nivelEstoque(p) !== 'normal'))
 
@@ -166,11 +248,10 @@ const itensVendidos = computed(() =>
 )
 
 // ==================================================================
-// PRODUTOS MAIS VENDIDOS — busca + rolagem + paginação + expandível
+// PRODUTOS MAIS VENDIDOS — busca + rolagem + paginação + clique abre modal
 // ==================================================================
 const buscaMaisVendidos = ref('')
 const limiteMaisVendidos = ref(10)
-const expandidoVendidosId = ref(null)
 
 const maisVendidosFiltrados = computed(() => {
   const termo = buscaMaisVendidos.value.trim().toLowerCase()
@@ -180,35 +261,22 @@ const maisVendidosFiltrados = computed(() => {
 const maxVendidos30d = computed(() =>
   Math.max(1, ...maisVendidosFiltrados.value.map((p) => p.vendidos30d))
 )
-const totalVendidosListados = computed(() =>
-  maisVendidosFiltrados.value.reduce((s, p) => s + p.vendidos30d, 0)
-)
 const maisVendidosVisiveis = computed(() => maisVendidosFiltrados.value.slice(0, limiteMaisVendidos.value))
 
 function carregarMaisVendidos() {
   limiteMaisVendidos.value += 10
 }
-function alternarExpandidoVendidos(id) {
-  expandidoVendidosId.value = expandidoVendidosId.value === id ? null : id
-}
-function detalheProduto(id) {
-  return produtos.find((p) => p.id === id) ?? null
-}
 
 // ==================================================================
-// REPOSIÇÃO — busca + rolagem + clicável/expansível
+// REPOSIÇÃO — busca + rolagem + clique abre modal
 // ==================================================================
 const buscaReposicao = ref('')
-const expandidoReposicaoId = ref(null)
 
 const baixosFiltrados = computed(() => {
   const termo = buscaReposicao.value.trim().toLowerCase()
   if (!termo) return baixos.value
   return baixos.value.filter((p) => p.nome.toLowerCase().includes(termo))
 })
-function alternarExpandidoReposicao(id) {
-  expandidoReposicaoId.value = expandidoReposicaoId.value === id ? null : id
-}
 
 // ==================================================================
 // VENDAS POR DIA — resumo estatístico
@@ -238,27 +306,27 @@ const variacaoPeriodo = computed(() => {
   return ((segunda - primeira) / primeira) * 100
 })
 
-// ---- Chart: Vendas por dia (área elaborada) ----
+// ---- Chart: Vendas por dia ----
 const dadosVendasPorDia = computed(() => ({
   labels: vendasPorDia.map((v) => v.dia),
   datasets: [
     {
       label: 'Vendas',
       data: vendasPorDia.map((v) => v.vendas),
-      borderColor: paleta.value[0],
+      borderColor: paleta[0],
       backgroundColor: (context) => {
         const { ctx, chartArea } = context.chart
-        if (!chartArea) return `${paleta.value[0]}22`
+        if (!chartArea) return `${paleta[0]}22`
         const gradiente = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-        gradiente.addColorStop(0, `${paleta.value[0]}55`)
-        gradiente.addColorStop(1, `${paleta.value[0]}00`)
+        gradiente.addColorStop(0, `${paleta[0]}55`)
+        gradiente.addColorStop(1, `${paleta[0]}00`)
         return gradiente
       },
       tension: 0.35,
       borderWidth: 2,
       fill: true,
       pointBackgroundColor: vendasPorDia.map((_, i) =>
-        i === indicePico.value ? '#22c55e' : i === indiceMinimo.value ? '#ef4444' : paleta.value[0]
+        i === indicePico.value ? paleta[0] : i === indiceMinimo.value ? '#ef4444' : paleta[0]
       ),
       pointRadius: vendasPorDia.map((_, i) =>
         i === indicePico.value || i === indiceMinimo.value ? 5 : 0
@@ -312,14 +380,14 @@ const opcoesVendasPorDia = computed(() => ({
   },
 }))
 
-// ---- Chart: Vendas por grupo (com rótulos de valor) ----
+// ---- Chart: Vendas por grupo ----
 const dadosVendasPorGrupo = computed(() => ({
   labels: vendasPorGrupo.map((v) => v.grupo),
   datasets: [
     {
       label: 'Vendas',
       data: vendasPorGrupo.map((v) => v.valor),
-      backgroundColor: paleta.value[0],
+      backgroundColor: paleta[0],
       borderRadius: 6,
       maxBarThickness: 40,
       datalabels: {
@@ -336,7 +404,7 @@ const dadosVendasPorGrupo = computed(() => ({
 const opcoesVendasPorGrupo = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
-  layout: { padding: { top: 20 } },
+  layout: { padding: { top: 24 } },
   plugins: { legend: { display: false }, tooltip: tooltipBase.value },
   scales: {
     x: { grid: { display: false }, ticks: { color: corEixo.value, font: { size: 12 } } },
@@ -347,14 +415,14 @@ const opcoesVendasPorGrupo = computed(() => ({
   },
 }))
 
-// ---- Chart: Compras por fornecedor (com rótulos de valor) ----
+// ---- Chart: Compras por fornecedor ----
 const dadosComprasPorFornecedor = computed(() => ({
   labels: comprasPorFornecedor.value.map((c) => c.nome),
   datasets: [
     {
       label: 'Compras',
       data: comprasPorFornecedor.value.map((c) => c.valor),
-      backgroundColor: paleta.value[1],
+      backgroundColor: paleta[1],
       borderRadius: 6,
       maxBarThickness: 24,
       datalabels: {
@@ -380,13 +448,46 @@ const opcoesComprasPorFornecedor = computed(() => ({
   },
 }))
 
-// ---- Chart: Produtos por grupo (donut com percentuais) ----
+// ---- Chart: Produtos por marca ----
+const dadosProdutosPorMarca = computed(() => ({
+  labels: produtosPorMarca.value.map((m) => m.nome),
+  datasets: [
+    {
+      label: 'Produtos',
+      data: produtosPorMarca.value.map((m) => m.valor),
+      backgroundColor: paleta[2],
+      borderRadius: 6,
+      maxBarThickness: 24,
+      datalabels: {
+        anchor: 'end',
+        align: 'right',
+        color: corTexto.value,
+        font: { size: 10, weight: '600' },
+        formatter: (valor) => String(valor),
+      },
+    },
+  ],
+}))
+
+const opcoesProdutosPorMarca = computed(() => ({
+  indexAxis: 'y',
+  responsive: true,
+  maintainAspectRatio: false,
+  layout: { padding: { right: 32 } },
+  plugins: { legend: { display: false }, tooltip: tooltipBase.value },
+  scales: {
+    x: { grid: { display: false }, ticks: { display: false } },
+    y: { grid: { display: false }, ticks: { color: corEixo.value, font: { size: 12 } } },
+  },
+}))
+
+// ---- Chart: Produtos por grupo (donut) ----
 const dadosProdutosPorGrupo = computed(() => ({
   labels: produtosPorGrupo.value.map((p) => p.nome),
   datasets: [
     {
       data: produtosPorGrupo.value.map((p) => p.valor),
-      backgroundColor: produtosPorGrupo.value.map((_, i) => paleta.value[i % paleta.value.length]),
+      backgroundColor: produtosPorGrupo.value.map((_, i) => paleta[i % paleta.length]),
       borderWidth: 0,
     },
   ],
@@ -410,14 +511,44 @@ const opcoesDonut = computed(() => ({
   },
 }))
 
-// ---- Chart: Pessoas por grupo (com rótulos de contagem) ----
+// ---- Chart: Produtos ativos x inativos (donut) ----
+const dadosProdutosPorStatus = computed(() => ({
+  labels: produtosPorStatus.value.map((p) => p.nome),
+  datasets: [
+    {
+      data: produtosPorStatus.value.map((p) => p.valor),
+      backgroundColor: [paleta[0], '#94a3b8'],
+      borderWidth: 0,
+    },
+  ],
+}))
+
+const opcoesDonutStatus = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  plugins: {
+    legend: { display: false },
+    tooltip: tooltipBase.value,
+    datalabels: {
+      color: '#fff',
+      font: { size: 11, weight: '700' },
+      formatter: (valor) => {
+        const total = totalProdutosStatus.value || 1
+        return `${Math.round((valor / total) * 100)}%`
+      },
+    },
+  },
+}))
+
+// ---- Chart: Pessoas por grupo ----
 const dadosPessoasPorGrupo = computed(() => ({
   labels: porGrupoPessoas.value.map((p) => p.nome),
   datasets: [
     {
       label: 'Pessoas',
       data: porGrupoPessoas.value.map((p) => p.valor),
-      backgroundColor: paleta.value[0],
+      backgroundColor: paleta[0],
       borderRadius: 6,
       maxBarThickness: 40,
       datalabels: {
@@ -442,13 +573,13 @@ const opcoesPessoasPorGrupo = computed(() => ({
   },
 }))
 
-// ---- Chart: Pessoas por gênero (pizza com percentuais) ----
+// ---- Chart: Pessoas por gênero (pizza) ----
 const dadosPessoasPorGenero = computed(() => ({
   labels: porGeneroPessoas.value.map((p) => p.nome),
   datasets: [
     {
       data: porGeneroPessoas.value.map((p) => p.valor),
-      backgroundColor: porGeneroPessoas.value.map((_, i) => paleta.value[i % paleta.value.length]),
+      backgroundColor: porGeneroPessoas.value.map((_, i) => paleta[i % paleta.length]),
       borderWidth: 0,
     },
   ],
@@ -470,6 +601,38 @@ const opcoesPizza = computed(() => ({
     },
   },
 }))
+
+// ---- Chart: Pessoas por faixa etária ----
+const dadosPessoasPorFaixaEtaria = computed(() => ({
+  labels: pessoasPorFaixaEtaria.value.map((f) => f.nome),
+  datasets: [
+    {
+      label: 'Pessoas',
+      data: pessoasPorFaixaEtaria.value.map((f) => f.valor),
+      backgroundColor: paleta[1],
+      borderRadius: 6,
+      maxBarThickness: 40,
+      datalabels: {
+        anchor: 'end',
+        align: 'top',
+        color: corTexto.value,
+        font: { size: 11, weight: '600' },
+        formatter: (valor) => String(valor),
+      },
+    },
+  ],
+}))
+
+const opcoesPessoasPorFaixaEtaria = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  layout: { padding: { top: 20 } },
+  plugins: { legend: { display: false }, tooltip: tooltipBase.value },
+  scales: {
+    x: { grid: { display: false }, ticks: { color: corEixo.value, font: { size: 12 } } },
+    y: { grid: { color: corGrade.value }, ticks: { color: corEixo.value, font: { size: 12 } } },
+  },
+}))
 </script>
 
 <template>
@@ -489,6 +652,14 @@ const opcoesPizza = computed(() => ({
           <SelectItem value="365">Últimos 12 meses</SelectItem>
         </SelectContent>
       </Select>
+      <Button
+        type="button"
+        class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+        :disabled="carregando"
+        @click="atualizarRelatorio"
+      >
+        <RefreshCw class="size-4" :class="carregando ? 'animate-spin' : ''" /> Atualizar
+      </Button>
       <Button variant="outline" class="cursor-pointer" @click="exportar">
         <Download class="size-4" /> Exportar
       </Button>
@@ -557,99 +728,86 @@ const opcoesPizza = computed(() => ({
           </template>
         </Section>
 
-        <div class="grid gap-4 lg:grid-cols-2">
+        <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
           <Section titulo="Vendas por grupo" :descricao="`${vendasPorGrupo.length} grupos no período`">
-            <div class="overflow-x-auto">
-              <div
-                class="h-64 p-3 md:p-4"
-                :style="{ minWidth: Math.max(vendasPorGrupo.length * 110, 100) + 'px' }"
-              >
-                <Bar :data="dadosVendasPorGrupo" :options="opcoesVendasPorGrupo" />
+            <div class="flex h-[460px] flex-col p-3 md:p-4">
+              <div class="flex-1 overflow-x-auto">
+                <div
+                  class="h-full"
+                  :style="{ minWidth: Math.max(vendasPorGrupo.length * 110, 100) + 'px' }"
+                >
+                  <Bar :data="dadosVendasPorGrupo" :options="opcoesVendasPorGrupo" />
+                </div>
               </div>
             </div>
           </Section>
 
           <Section
             titulo="Produtos mais vendidos"
-            :descricao="`Mostrando ${maisVendidosVisiveis.length} de ${maisVendidosFiltrados.length}`"
+            :descricao="`Mostrando ${maisVendidosVisiveis.length} de ${maisVendidosFiltrados.length} · clique para editar`"
           >
-            <div class="border-b border-border p-2">
-              <div class="relative">
-                <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  v-model="buscaMaisVendidos"
-                  type="text"
-                  placeholder="Buscar produto…"
-                  class="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring"
-                />
-              </div>
-            </div>
-
-            <ul class="max-h-[360px] divide-y divide-border overflow-y-auto">
-              <li
-                v-if="maisVendidosVisiveis.length === 0"
-                class="p-4 text-center text-sm text-muted-foreground"
-              >
-                Nenhum produto encontrado.
-              </li>
-              <li v-for="(p, idx) in maisVendidosVisiveis" :key="p.id">
-                <button
-                  type="button"
-                  class="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
-                  @click="alternarExpandidoVendidos(p.id)"
-                >
-                  <span
-                    class="flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                    :class="
-                      idx === 0
-                        ? 'bg-amber-400/20 text-amber-600'
-                        : idx === 1
-                          ? 'bg-slate-400/20 text-slate-600'
-                          : idx === 2
-                            ? 'bg-orange-400/20 text-orange-700'
-                            : 'bg-muted text-muted-foreground'
-                    "
-                  >
-                    {{ idx + 1 }}
-                  </span>
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center justify-between gap-2">
-                      <span class="truncate text-sm">{{ p.nome }}</span>
-                      <span class="shrink-0 text-sm font-semibold">{{ p.vendidos30d }} un.</span>
-                    </div>
-                    <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        class="h-full rounded-full bg-primary"
-                        :style="{ width: `${(p.vendidos30d / maxVendidos30d) * 100}%` }"
-                      />
-                    </div>
-                  </div>
-                  <ChevronDown
-                    class="size-4 shrink-0 text-muted-foreground transition-transform"
-                    :class="expandidoVendidosId === p.id ? 'rotate-180' : ''"
+            <div class="flex h-[460px] flex-col">
+              <div class="shrink-0 border-b border-border p-2">
+                <div class="relative">
+                  <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    v-model="buscaMaisVendidos"
+                    type="text"
+                    placeholder="Buscar produto…"
+                    class="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring"
                   />
-                </button>
-
-                <div v-if="expandidoVendidosId === p.id" class="bg-surface px-4 py-3 text-xs">
-                  <div class="grid grid-cols-2 gap-2 text-muted-foreground">
-                    <p>Marca: <span class="text-foreground">{{ detalheProduto(p.id)?.marca ?? '—' }}</span></p>
-                    <p>SKU: <span class="text-foreground">{{ detalheProduto(p.id)?.sku ?? '—' }}</span></p>
-                    <p>Preço: <span class="text-foreground">{{ brl(detalheProduto(p.id)?.preco ?? 0) }}</span></p>
-                    <p>
-                      Participação:
-                      <span class="text-foreground">
-                        {{ totalVendidosListados > 0 ? Math.round((p.vendidos30d / totalVendidosListados) * 100) : 0 }}%
-                      </span>
-                    </p>
-                  </div>
                 </div>
-              </li>
-            </ul>
+              </div>
 
-            <div v-if="limiteMaisVendidos < maisVendidosFiltrados.length" class="border-t border-border p-2">
-              <Button variant="ghost" size="sm" class="w-full cursor-pointer text-xs" @click="carregarMaisVendidos">
-                Carregar mais ({{ maisVendidosFiltrados.length - limiteMaisVendidos }} restantes)
-              </Button>
+              <ul class="flex-1 divide-y divide-border overflow-y-auto">
+                <li
+                  v-if="maisVendidosVisiveis.length === 0"
+                  class="p-4 text-center text-sm text-muted-foreground"
+                >
+                  Nenhum produto encontrado.
+                </li>
+                <li v-for="(p, idx) in maisVendidosVisiveis" :key="p.id">
+                  <button
+                    type="button"
+                    class="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
+                    @click="editarProduto(detalheProduto(p.id))"
+                  >
+                    <span
+                      class="flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                      :class="
+                        idx === 0
+                          ? 'bg-amber-400/20 text-amber-600'
+                          : idx === 1
+                            ? 'bg-slate-400/20 text-slate-600'
+                            : idx === 2
+                              ? 'bg-orange-400/20 text-orange-700'
+                              : 'bg-muted text-muted-foreground'
+                      "
+                    >
+                      {{ idx + 1 }}
+                    </span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="truncate text-sm">{{ p.nome }}</span>
+                        <span class="shrink-0 text-sm font-semibold">{{ p.vendidos30d }} un.</span>
+                      </div>
+                      <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          class="h-full rounded-full bg-primary"
+                          :style="{ width: `${(p.vendidos30d / maxVendidos30d) * 100}%` }"
+                        />
+                      </div>
+                    </div>
+                    <Pencil class="size-3.5 shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
+              </ul>
+
+              <div v-if="limiteMaisVendidos < maisVendidosFiltrados.length" class="shrink-0 border-t border-border p-2">
+                <Button variant="ghost" size="sm" class="w-full cursor-pointer text-xs" @click="carregarMaisVendidos">
+                  Carregar mais ({{ maisVendidosFiltrados.length - limiteMaisVendidos }} restantes)
+                </Button>
+              </div>
             </div>
           </Section>
         </div>
@@ -678,7 +836,7 @@ const opcoesPizza = computed(() => ({
           </div>
         </Section>
 
-        <Section titulo="Produtos vendidos que precisam de reposição">
+        <Section titulo="Produtos vendidos que precisam de reposição" descricao="Clique em um produto para editar o cadastro.">
           <div class="border-b border-border p-2">
             <div class="relative">
               <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -699,7 +857,7 @@ const opcoesPizza = computed(() => ({
               <button
                 type="button"
                 class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
-                @click="alternarExpandidoReposicao(p.id)"
+                @click="editarProduto(p)"
               >
                 <div class="min-w-0">
                   <p class="truncate text-sm font-medium">{{ p.nome }}</p>
@@ -708,23 +866,8 @@ const opcoesPizza = computed(() => ({
                 <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : 'warning'">
                   {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un.` }}
                 </StatusPill>
-                <ChevronDown
-                  class="size-4 shrink-0 text-muted-foreground transition-transform"
-                  :class="expandidoReposicaoId === p.id ? 'rotate-180' : ''"
-                />
+                <Pencil class="size-3.5 shrink-0 text-muted-foreground" />
               </button>
-
-              <div v-if="expandidoReposicaoId === p.id" class="bg-surface px-4 py-3 text-xs">
-                <div class="grid grid-cols-2 gap-2 text-muted-foreground">
-                  <p>Marca: <span class="text-foreground">{{ p.marca ?? '—' }}</span></p>
-                  <p>Subgrupo: <span class="text-foreground">{{ p.subgrupo ?? '—' }}</span></p>
-                  <p>Custo unitário: <span class="text-foreground">{{ brl(p.custo ?? 0) }}</span></p>
-                  <p>
-                    Sugestão de compra:
-                    <span class="text-foreground">{{ Math.max(0, (p.minimo ?? 0) - (p.estoque ?? 0)) }} un.</span>
-                  </p>
-                </div>
-              </div>
             </li>
           </ul>
         </Section>
@@ -776,13 +919,44 @@ const opcoesPizza = computed(() => ({
                   {{ produtos.filter((p) => nivelEstoque(p) === n).length }} produtos
                 </span>
               </li>
-              <li class="flex items-center justify-between px-4 py-3.5">
-                <StatusPill tom="neutral">Inativos</StatusPill>
-                <span class="text-sm font-semibold">
-                  {{ produtos.filter((p) => p.status === 'inativo').length }} produtos
-                </span>
-              </li>
             </ul>
+          </Section>
+
+          <Section titulo="Produtos por marca" :descricao="`${produtosPorMarca.length} marcas cadastradas`">
+            <div class="overflow-x-auto">
+              <div
+                class="h-64 p-3 md:p-4"
+                :style="{ minHeight: Math.max(produtosPorMarca.length * 40, 200) + 'px' }"
+              >
+                <Bar :data="dadosProdutosPorMarca" :options="opcoesProdutosPorMarca" />
+              </div>
+            </div>
+          </Section>
+
+          <Section titulo="Produtos ativos × inativos">
+            <div class="grid gap-4 p-3 sm:grid-cols-2 md:p-4">
+              <div class="h-56">
+                <Pie :data="dadosProdutosPorStatus" :options="opcoesDonutStatus" />
+              </div>
+              <ul class="space-y-1">
+                <li
+                  v-for="(p, i) in produtosPorStatus"
+                  :key="p.nome"
+                  class="flex items-center justify-between gap-2 rounded-md px-2 py-2 text-sm"
+                >
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span
+                      class="size-2.5 shrink-0 rounded-full"
+                      :style="{ backgroundColor: i === 0 ? paleta[0] : '#94a3b8' }"
+                    />
+                    <span class="truncate">{{ p.nome }}</span>
+                  </span>
+                  <span class="shrink-0 text-muted-foreground">
+                    {{ p.valor }} · {{ totalProdutosStatus > 0 ? Math.round((p.valor / totalProdutosStatus) * 100) : 0 }}%
+                  </span>
+                </li>
+              </ul>
+            </div>
           </Section>
         </div>
       </TabsContent>
@@ -821,7 +995,15 @@ const opcoesPizza = computed(() => ({
             </div>
           </Section>
         </div>
+
+        <Section titulo="Pessoas por faixa etária" descricao="Calculada a partir da data de nascimento cadastrada.">
+          <div class="h-64 p-3 md:p-4">
+            <Bar :data="dadosPessoasPorFaixaEtaria" :options="opcoesPessoasPorFaixaEtaria" />
+          </div>
+        </Section>
       </TabsContent>
     </Tabs>
   </div>
+
+  <NewProduct v-model:open="produtoModalAberto" :produto="produtoEditando" @salvo="produtoSalvo" />
 </template>
