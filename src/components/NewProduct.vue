@@ -137,6 +137,12 @@ const margem = computed(() => {
   return p > 0 && c > 0 ? ((p - c) / p) * 100 : null
 })
 
+// 🔴 AQUI — classe dinâmica da margem: verde se positiva, vermelha se negativa
+const margemClasse = computed(() => {
+  if (margem.value === null) return ''
+  return margem.value >= 0 ? 'text-emerald-500' : 'text-red-500'
+})
+
 function onGrupoChange(v) {
   form.grupo = v
   form.subgrupo = ''
@@ -302,8 +308,9 @@ function salvar() {
                 <label for="produto-marca" class="mb-1.5 block text-sm font-medium text-foreground">
                   Marca
                 </label>
+                <!-- 🔴 AQUI — !h-10 força a mesma altura do Input, independente do padrão interno do componente -->
                 <Select v-model="form.marca">
-                  <SelectTrigger id="produto-marca" class="h-10 w-full cursor-pointer">
+                  <SelectTrigger id="produto-marca" class="!h-10 w-full cursor-pointer">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
@@ -318,8 +325,9 @@ function salvar() {
                 <label for="produto-grupo" class="mb-1.5 block text-sm font-medium text-foreground">
                   Grupo <span class="text-destructive">*</span>
                 </label>
+                <!-- 🔴 AQUI -->
                 <Select :model-value="form.grupo" @update:model-value="onGrupoChange">
-                  <SelectTrigger id="produto-grupo" class="h-10 w-full cursor-pointer" :aria-invalid="!!erros.grupo">
+                  <SelectTrigger id="produto-grupo" class="!h-10 w-full cursor-pointer" :aria-invalid="!!erros.grupo">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
@@ -335,8 +343,9 @@ function salvar() {
                 <label for="produto-subgrupo" class="mb-1.5 block text-sm font-medium text-foreground">
                   Subgrupo
                 </label>
+                <!-- 🔴 AQUI -->
                 <Select v-model="form.subgrupo" :disabled="!form.grupo">
-                  <SelectTrigger id="produto-subgrupo" class="h-10 w-full cursor-pointer">
+                  <SelectTrigger id="produto-subgrupo" class="!h-10 w-full cursor-pointer">
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
@@ -438,12 +447,13 @@ function salvar() {
               <p class="mt-1 text-xs text-muted-foreground">Avisamos quando chegar nesse número.</p>
             </div>
 
+            <!-- 🔴 AQUI — margemClasse aplica verde (positiva) ou vermelho (negativa) -->
             <div
               v-if="margem !== null"
               class="col-span-4 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm"
             >
               Margem estimada:
-              <span class="font-semibold text-primary">{{ margem.toFixed(1) }}%</span>
+              <span class="font-semibold" :class="margemClasse">{{ margem.toFixed(1) }}%</span>
               · lucro de {{ brl(preco.valorNumerico.value - custo.valorNumerico.value) }} por unidade
             </div>
           </div>
