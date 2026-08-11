@@ -6,12 +6,12 @@ const router = createRouter({
     {
       path: '/',
       name: 'dashboard',
-      component: () => import('@/views/DashboardView.vue')
+      component: () => import('@/views/DashboardView.vue'),
     },
     {
       path: '/pessoas',
       name: 'pessoas',
-      component: () => import('@/views/PersonView.vue')
+      component: () => import('@/views/PersonView.vue'),
     },
     {
       path: '/produtos',
@@ -52,11 +52,27 @@ const router = createRouter({
       path: '/relatorios',
       name: 'relatorios',
       component: () => import('@/views/ReportsView.vue'),
-    }
-
-
-
+    },
+    // Rotas públicas (não exigem login) ficam com meta.public: true
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/auth/Login.vue'),
+      meta: { public: true },
+    },
   ],
+})
+
+// 🔴 AQUI: troque pela checagem real de sessão quando integrar a API de auth
+router.beforeEach((to) => {
+  const autenticado = !!localStorage.getItem('estoquepro:token')
+
+  if (!to.meta.public && !autenticado) {
+    return { name: 'login' }
+  }
+  if (to.name === 'login' && autenticado) {
+    return '/'
+  }
 })
 
 export default router
