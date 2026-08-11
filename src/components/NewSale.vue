@@ -27,6 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 
 import EmptyState from '@/components/page-shell/EmptyState.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
@@ -45,6 +47,7 @@ const emit = defineEmits(['update:open', 'created'])
 const { sucesso, erro } = useFeedback()
 
 const cliente = ref('')
+const semCliente = ref(false)
 const buscaBruta = ref('')
 const itens = ref([])
 const pagamento = ref('')
@@ -93,7 +96,42 @@ function criarMascaraMoeda(limiteDigitos = 8) {
   return { raw, formatted, valorNumerico, onInput, setValue }
 }
 
+// ---- Máscara percentual (0 a 100,00%) — mesmo esquema de centavos, mas travando em 100 ----
+function criarMascaraPercentual(limiteDigitos = 5) {
+  const raw = ref('')
+
+  const formatted = computed(() => {
+    if (!raw.value) return ''
+    const numero = Number(raw.value) / 100
+    return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  })
+
+  const valorNumerico = computed(() => (raw.value ? Number(raw.value) / 100 : 0))
+
+  function onInput(evento) {
+    let digitos = evento.target.value.replace(/\D/g, '').slice(0, limiteDigitos)
+    if (Number(digitos) > 10000) digitos = '10000' // trava em 100,00%
+    raw.value = digitos
+    evento.target.value = formatted.value
+  }
+
+  function setValue(numero) {
+    if (numero === null || numero === undefined || numero === '') {
+      raw.value = ''
+      return
+    }
+    raw.value = String(Math.round(Number(numero) * 100))
+  }
+
+  return { raw, formatted, valorNumerico, onInput, setValue }
+}
+
 const desconto = criarMascaraMoeda(8)
+const descontoPercentual = criarMascaraPercentual(5)
+
+// só um tipo de desconto pode estar preenchido por vez (valor numérico > 0, não apenas "tem dígitos")
+const descontoValorPreenchido = computed(() => desconto.valorNumerico.value > 0)
+const descontoPercentualPreenchido = computed(() => descontoPercentual.valorNumerico.value > 0)
 
 const clientesAtivos = computed(() =>
   pessoas.filter((p) => p.grupo === 'Cliente' && p.status === 'ativo')
@@ -108,8 +146,23 @@ const disponiveis = computed(() => {
 })
 
 const subtotal = computed(() => itens.value.reduce((s, i) => s + i.qtd * i.valor, 0))
-const total = computed(() => Math.max(0, subtotal.value - desconto.valorNumerico.value))
-const podeFinalizar = computed(() => !!cliente.value && !!pagamento.value && itens.value.length > 0)
+
+const valorDescontoAplicado = computed(() => {
+  if (descontoValorPreenchido.value) return desconto.valorNumerico.value
+  if (descontoPercentualPreenchido.value) return subtotal.value * (descontoPercentual.valorNumerico.value / 100)
+  return 0
+})
+
+const total = computed(() => Math.max(0, subtotal.value - valorDescontoAplicado.value))
+
+const podeFinalizar = computed(
+  () => (!!cliente.value || semCliente.value) && !!pagamento.value && itens.value.length > 0
+)
+
+// ao marcar "venda sem cliente", limpa a seleção de cliente
+watch(semCliente, (marcado) => {
+  if (marcado) cliente.value = ''
+})
 
 watch(
   () => props.open,
@@ -120,9 +173,11 @@ watch(
 
 function resetar() {
   cliente.value = ''
+  semCliente.value = false
   buscaBruta.value = ''
   itens.value = []
   desconto.setValue('')
+  descontoPercentual.setValue('')
   pagamento.value = ''
   salvando.value = false
 }
@@ -215,9 +270,10 @@ async function finalizar() {
 
     sucesso('Venda finalizada.', 'Estoque atualizado com as saídas.')
     emit('created', {
-      cliente: cliente.value,
+      cliente: semCliente.value ? 'Consumidor final' : cliente.value,
       itens: itens.value.map((i) => ({ ...i })),
-      desconto: desconto.valorNumerico.value,
+      desconto: valorDescontoAplicado.value,
+      descontoPercentual: descontoPercentualPreenchido.value ? descontoPercentual.valorNumerico.value : null,
       pagamento: pagamento.value,
     })
     fechar()
@@ -248,11 +304,15 @@ async function finalizar() {
               </h3>
               <div>
                 <label for="cliente" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Para quem é a venda? <span class="text-destructive">*</span>
+                  Para quem é a venda?
+                  <span v-if="!semCliente" class="text-destructive">*</span>
                 </label>
                 <div class="flex gap-2">
-                  <Select v-model="cliente">
-                    <SelectTrigger id="cliente" class="h-10 w-full cursor-pointer bg-surface">
+                  <Select v-model="cliente" :disabled="semCliente">
+                    <SelectTrigger
+                      id="cliente"
+                      class="h-10 w-full cursor-pointer bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                    >
                       <SelectValue placeholder="Selecione o cliente" />
                     </SelectTrigger>
                     <SelectContent>
@@ -270,12 +330,19 @@ async function finalizar() {
                     type="button"
                     variant="outline"
                     size="icon"
-                    class="h-10 w-10 shrink-0 cursor-pointer"
+                    class="h-10 w-10 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="Cadastrar novo cliente"
+                    :disabled="semCliente"
                     @click="pessoaModalAberto = true"
                   >
                     <UserPlus class="size-4" />
                   </Button>
+                </div>
+                <div class="mt-2 flex items-center gap-2">
+                  <Checkbox id="sem-cliente" v-model:checked="semCliente" class="cursor-pointer" />
+                  <Label for="sem-cliente" class="cursor-pointer text-sm font-normal text-muted-foreground">
+                    Venda sem cliente identificado
+                  </Label>
                 </div>
               </div>
             </section>
@@ -411,7 +478,7 @@ async function finalizar() {
                     </Button>
                     <span class="ml-auto text-sm font-semibold">{{ brl(i.qtd * i.valor) }}</span>
                   </div>
-                  <p v-if="i.qtd >= i.estoque" class="flex items-center gap-1.5 text-xs text-warning text-amber-400">
+                  <p v-if="i.qtd >= i.estoque" class="flex items-center gap-1.5 text-xs text-warning">
                     <TriangleAlert class="size-3.5" aria-hidden="true" />
                     Limite do estoque disponível ({{ i.estoque }} un.).
                   </p>
@@ -429,23 +496,42 @@ async function finalizar() {
               </h3>
 
               <div>
-                <label for="desconto" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Desconto
-                </label>
-                <div class="relative">
-                  <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    R$
-                  </span>
-                  <input
-                    id="desconto"
-                    :value="desconto.formatted.value"
-                    inputmode="decimal"
-                    placeholder="0,00"
-                    class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                    @input="desconto.onInput"
-                    @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
-                  />
+                <label class="mb-1.5 block text-sm font-medium text-foreground">Desconto</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="relative">
+                    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      R$
+                    </span>
+                    <input
+                      id="desconto"
+                      :value="desconto.formatted.value"
+                      inputmode="decimal"
+                      placeholder="0,00"
+                      :disabled="descontoPercentualPreenchido"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      @input="desconto.onInput"
+                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
+                    />
+                  </div>
+                  <div class="relative">
+                    <input
+                      id="desconto-percentual"
+                      :value="descontoPercentual.formatted.value"
+                      inputmode="decimal"
+                      placeholder="0,00"
+                      :disabled="descontoValorPreenchido"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      @input="descontoPercentual.onInput"
+                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
+                    />
+                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      %
+                    </span>
+                  </div>
                 </div>
+                <p class="mt-1 text-[11px] text-muted-foreground">
+                  Use valor em R$ ou em %. Preenchendo um, o outro é bloqueado.
+                </p>
               </div>
 
               <div>
@@ -471,8 +557,11 @@ async function finalizar() {
                   <span>{{ brl(subtotal) }}</span>
                 </div>
                 <div class="flex justify-between text-muted-foreground">
-                  <span>Desconto</span>
-                  <span>- {{ brl(desconto.valorNumerico.value) }}</span>
+                  <span>
+                    Desconto
+                    <template v-if="descontoPercentualPreenchido"> ({{ descontoPercentual.formatted.value }}%)</template>
+                  </span>
+                  <span>- {{ brl(valorDescontoAplicado) }}</span>
                 </div>
                 <div class="flex items-center justify-between border-t border-border pt-1.5 font-medium">
                   <span>Total a pagar</span>
@@ -485,7 +574,7 @@ async function finalizar() {
 
         <DialogFooter class="flex-col items-stretch gap-2 border-t border-border pt-5 sm:flex-row sm:items-center">
           <p v-if="!podeFinalizar" class="text-xs text-muted-foreground sm:mr-auto">
-            Escolha o cliente, adicione produtos e selecione o pagamento para finalizar.
+            Escolha o cliente (ou marque venda sem cliente), adicione produtos e selecione o pagamento para finalizar.
           </p>
           <div class="flex gap-2 sm:ml-auto">
             <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">Cancelar</Button>
