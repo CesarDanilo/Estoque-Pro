@@ -158,7 +158,7 @@ function confirmarExclusao() {
 
   <div class="space-y-4 p-4 md:space-y-5 md:p-6">
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <MetricCard rotulo="Total de produtos" :valor="String(totalProdutos)">
+      <MetricCard rotulo="Total de produtos" :valor="String(totalProdutos)" :icone="Package">
         <template #icone>
           <Package class="size-4" />
         </template>
