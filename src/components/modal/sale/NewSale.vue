@@ -179,6 +179,33 @@ const disponiveis = computed(() => {
   )
 })
 
+// ---- Navegação por teclado na lista de produtos ----
+const indiceAtivo = ref(-1)
+
+watch(busca, () => {
+  indiceAtivo.value = -1
+})
+
+function onBuscaProdutoKeydown(evento) {
+  if (disponiveis.value.length === 0) return
+
+  if (evento.key === 'ArrowDown') {
+    evento.preventDefault()
+    indiceAtivo.value = (indiceAtivo.value + 1) % disponiveis.value.length
+  } else if (evento.key === 'ArrowUp') {
+    evento.preventDefault()
+    indiceAtivo.value =
+      indiceAtivo.value <= 0 ? disponiveis.value.length - 1 : indiceAtivo.value - 1
+  } else if (evento.key === 'Enter') {
+    if (indiceAtivo.value >= 0 && indiceAtivo.value < disponiveis.value.length) {
+      evento.preventDefault()
+      adicionar(disponiveis.value[indiceAtivo.value].id)
+    }
+  } else if (evento.key === 'Escape') {
+    indiceAtivo.value = -1
+  }
+}
+
 const subtotal = computed(() => {
   const res = itens.value.reduce((s, i) => s + safeNumber(i.qtd) * safeNumber(i.valor), 0)
   return safeNumber(res)
@@ -219,16 +246,6 @@ const temClienteValido = computed(() => {
   return Boolean(cliente.value && String(cliente.value).trim() !== '')
 })
 
-// ---- VALIDAÇÃO GLOBAL DA VENDA ----
-const podeFinalizar = computed(() => {
-  const clienteValido = temClienteValido.value
-  const temFormaPagamento = Boolean(pagamento.value)
-  const temItensNoCarrinho = itens.value.length > 0
-  const totalCalculadoValido = !isNaN(total.value)
-
-  return clienteValido && temFormaPagamento && temItensNoCarrinho && totalCalculadoValido
-})
-
 watch(semCliente, (marcado) => {
   if (marcado) {
     cliente.value = ''
@@ -254,6 +271,7 @@ function resetar() {
   acrescimoPercentual.setValue('')
   pagamento.value = ''
   salvando.value = false
+  indiceAtivo.value = -1
 }
 
 function adicionar(id) {
@@ -335,7 +353,31 @@ function fechar() {
 }
 
 async function finalizar() {
-  if (salvando.value || !podeFinalizar.value) return
+  if (salvando.value) return
+
+  // ---- Validações com feedback específico por campo ----
+  if (!temClienteValido.value) {
+    erro(
+      'Cliente não informado',
+      'Selecione um cliente ou marque "Venda sem cliente identificado" para continuar.'
+    )
+    return
+  }
+
+  if (itens.value.length === 0) {
+    erro('Carrinho vazio', 'Adicione pelo menos um produto para finalizar a venda.')
+    return
+  }
+
+  if (!pagamento.value) {
+    erro('Forma de pagamento não informada', 'Selecione como o cliente vai pagar.')
+    return
+  }
+
+  if (isNaN(total.value)) {
+    erro('Não foi possível calcular o total da venda.')
+    return
+  }
 
   salvando.value = true
   try {
@@ -474,7 +516,10 @@ async function finalizar() {
                     type="text"
                     placeholder="Buscar por nome ou código…"
                     :maxlength="LIMITE_BUSCA_PRODUTO"
+                    role="combobox"
+                    aria-expanded="disponiveis.length > 0"
                     class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-3 pr-14 text-sm outline-none focus:ring-2 focus:ring-ring"
+                    @keydown="onBuscaProdutoKeydown"
                   />
                   <span
                     class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground/60"
@@ -493,9 +538,11 @@ async function finalizar() {
                 class="max-h-[180px] divide-y divide-border overflow-y-auto rounded-lg border border-border"
               >
                 <li
-                  v-for="p in disponiveis"
+                  v-for="(p, idx) in disponiveis"
                   :key="p.id"
-                  class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 bg-surface px-3 py-2.5"
+                  class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 transition-colors"
+                  :class="idx === indiceAtivo ? 'bg-accent' : 'bg-surface'"
+                  @mouseenter="indiceAtivo = idx"
                 >
                   <div class="min-w-0">
                     <p class="truncate text-sm font-medium">{{ p.nome }}</p>
@@ -709,14 +756,14 @@ async function finalizar() {
         </div>
 
         <DialogFooter class="flex-col items-stretch gap-2 border-t border-border pt-5 sm:flex-row sm:items-center">
-          <p v-if="!podeFinalizar" class="text-xs text-muted-foreground sm:mr-auto">
-            Escolha o cliente (ou marque venda sem cliente), adicione produtos e selecione o pagamento para finalizar.
+          <p class="text-xs text-muted-foreground sm:mr-auto">
+            Campos com <span class="text-destructive">*</span> são obrigatórios. Você será avisado ao finalizar se algo faltar.
           </p>
           <div class="flex gap-2 sm:ml-auto">
             <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">Cancelar</Button>
             <Button
               type="submit"
-              :disabled="!podeFinalizar || salvando"
+              :disabled="salvando"
               class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Loader2 v-if="salvando" class="size-4 animate-spin" />
