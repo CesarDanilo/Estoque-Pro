@@ -132,10 +132,10 @@ function confirmarExclusao() {
     :trilha="[{ titulo: 'Gestão' }, { titulo: 'Pessoas' }]"
   >
     <template #acoes>
-      <Button variant="outline" @click="exportar">
+      <Button variant="outline" @click="exportar" class="cursor-pointer">
         <Download class="size-4" /> Exportar
       </Button>
-      <Button as-child class="bg-emerald-500 text-black hover:bg-emerald-600">
+      <Button as-child class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600">
         <RouterLink to="/pessoas/nova">
           <Plus class="size-4" /> Nova pessoa
         </RouterLink>
@@ -154,24 +154,24 @@ function confirmarExclusao() {
         />
         <div class="grid grid-cols-2 gap-2 md:ml-auto md:flex md:shrink-0">
           <Select v-model="grupo">
-            <SelectTrigger class="h-10 md:w-40" aria-label="Filtrar por grupo">
+            <SelectTrigger class="h-10 cursor-pointer md:w-40" aria-label="Filtrar por grupo">
               <SelectValue placeholder="Grupo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos os grupos</SelectItem>
-              <SelectItem value="Cliente">Clientes</SelectItem>
-              <SelectItem value="Fornecedor">Fornecedores</SelectItem>
-              <SelectItem value="Colaborador">Colaboradores</SelectItem>
+              <SelectItem value="todos" class="cursor-pointer">Todos os grupos</SelectItem>
+              <SelectItem value="Cliente" class="cursor-pointer">Clientes</SelectItem>
+              <SelectItem value="Fornecedor" class="cursor-pointer">Fornecedores</SelectItem>
+              <SelectItem value="Colaborador" class="cursor-pointer">Colaboradores</SelectItem>
             </SelectContent>
           </Select>
           <Select v-model="status">
-            <SelectTrigger class="h-10 md:w-36" aria-label="Filtrar por situação">
+            <SelectTrigger class="h-10 cursor-pointer md:w-36" aria-label="Filtrar por situação">
               <SelectValue placeholder="Situação" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todas</SelectItem>
-              <SelectItem value="ativo">Ativas</SelectItem>
-              <SelectItem value="inativo">Inativas</SelectItem>
+              <SelectItem value="todos" class="cursor-pointer">Todas</SelectItem>
+              <SelectItem value="ativo" class="cursor-pointer">Ativas</SelectItem>
+              <SelectItem value="inativo" class="cursor-pointer">Inativas</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -186,8 +186,8 @@ function confirmarExclusao() {
       >
         <template #acao>
           <div class="flex gap-2">
-            <Button variant="outline" @click="limpar">Limpar filtros</Button>
-            <Button as-child>
+            <Button variant="outline" @click="limpar" class="cursor-pointer">Limpar filtros</Button>
+            <Button as-child class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600">
               <RouterLink to="/pessoas/nova">Cadastrar pessoa</RouterLink>
             </Button>
           </div>
@@ -222,7 +222,7 @@ function confirmarExclusao() {
                 <th class="px-5 py-3 font-medium">
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+                    class="inline-flex cursor-pointer items-center gap-1 transition-colors hover:text-foreground"
                     @click="ordenarPor('nome')"
                   >
                     Nome
@@ -238,7 +238,7 @@ function confirmarExclusao() {
                 <th class="px-4 py-3 font-medium">
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1 transition-colors hover:text-foreground"
+                    class="inline-flex cursor-pointer items-center gap-1 transition-colors hover:text-foreground"
                     @click="ordenarPor('cadastro')"
                   >
                     Cadastro
@@ -270,15 +270,15 @@ function confirmarExclusao() {
                 <td class="px-4 py-3 text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                      <Button variant="ghost" size="icon" :aria-label="`Ações para ${p.nome}`">
+                      <Button variant="ghost" size="icon" class="cursor-pointer" :aria-label="`Ações para ${p.nome}`">
                         <MoreHorizontal class="size-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem @click="toast('Abrindo cadastro…')">
+                      <DropdownMenuItem class="cursor-pointer" @click="toast('Abrindo cadastro…')">
                         <Pencil class="size-4" /> Editar
                       </DropdownMenuItem>
-                      <DropdownMenuItem class="text-destructive" @click="excluir = p">
+                      <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = p">
                         <Trash2 class="size-4" /> Excluir
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -297,6 +297,7 @@ function confirmarExclusao() {
             <Button
               variant="outline"
               size="sm"
+              class="cursor-pointer disabled:cursor-not-allowed"
               :disabled="paginaAtual === 1"
               @click="pagina = paginaAtual - 1"
             >
@@ -305,6 +306,7 @@ function confirmarExclusao() {
             <Button
               variant="outline"
               size="sm"
+              class="cursor-pointer disabled:cursor-not-allowed"
               :disabled="paginaAtual === totalPaginas"
               @click="pagina = paginaAtual + 1"
             >
@@ -325,9 +327,9 @@ function confirmarExclusao() {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-        <AlertDialogAction @click="confirmarExclusao">Excluir</AlertDialogAction>
-      </AlertDialogFooter>
+        <AlertDialogCancel class="cursor-pointer">Cancelar</AlertDialogCancel>
+        <AlertDialogAction class="cursor-pointer bg-red-500 text-white hover:bg-red-600" @click="confirmarExclusao">Excluir</AlertDialogAction>
+      </AlertDialogFooter> 
     </AlertDialogContent>
   </AlertDialog>
 </template>
