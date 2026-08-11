@@ -61,6 +61,7 @@ const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0 && p
 const atencao = computed(() => [...semEstoque.value, ...baixos.value])
 
 // estado do modal de edição de produto, aberto a partir de "Precisa da sua atenção"
+// e agora também a partir de "Mais vendidos (30 dias)"
 const modalProdutoAberto = ref(false)
 const produtoSelecionado = ref(null)
 
@@ -277,7 +278,6 @@ const chartOptionsGrupo = {
       <!-- max-h + overflow-y-auto garante rolagem quando a lista tiver muitos produtos -->
       <ul class="max-h-72 divide-y divide-border overflow-y-auto">
         <li v-for="p in atencao" :key="p.id">
-          <!-- 🔴 AQUI — cursor-pointer adicionado para indicar que o item é clicável -->
           <button
             type="button"
             class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
@@ -325,11 +325,13 @@ const chartOptionsGrupo = {
           </Button>
         </template>
 
+        <!-- 🔴 AQUI — trocado RouterLink por button, abre o modal de edição em vez de navegar -->
         <ul class="max-h-72 divide-y divide-border overflow-y-auto">
           <li v-for="(p, i) in maisVendidos" :key="p.id">
-            <RouterLink
-              :to="`/produtos/${p.id}`"
-              class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 md:px-5"
+            <button
+              type="button"
+              class="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
+              @click="abrirEdicaoProduto(p)"
             >
               <span class="grid size-6 place-items-center rounded-md bg-muted text-xs font-semibold">
                 {{ i + 1 }}
@@ -339,7 +341,7 @@ const chartOptionsGrupo = {
                 <p class="truncate text-xs text-muted-foreground">{{ p.grupo }}</p>
               </div>
               <span class="text-sm font-semibold">{{ p.vendidos30d }} un.</span>
-            </RouterLink>
+            </button>
           </li>
         </ul>
       </Section>
@@ -383,7 +385,7 @@ const chartOptionsGrupo = {
     </Section>
   </div>
 
-  <!-- modal de edição, aberto ao clicar em um item de "Precisa da sua atenção" -->
+  <!-- modal de edição, aberto ao clicar em um item de "Precisa da sua atenção" ou "Mais vendidos" -->
   <NewProduct
     v-model:open="modalProdutoAberto"
     :produto="produtoSelecionado"
