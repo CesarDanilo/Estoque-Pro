@@ -33,10 +33,9 @@ const secoes = [
       { titulo: 'Pessoas', url: '/pessoas', icone: Users },
       { titulo: 'Produtos', url: '/produtos', icone: Package },
       { titulo: 'Grupos', url: '/grupos', icone: FolderTree },
-      { titulo: 'Subgrupos', url: '/subgrupos', icone: Layers },
-      { titulo: 'Marcas', url: '/marcas', icone: Tags },
+      //{ titulo: 'Subgrupos', url: '/subgrupos', icone: Layers },
+      //{ titulo: 'Marcas', url: '/marcas', icone: Tags },
       { titulo: 'Fornecedores', url: '/fornecedores', icone: Truck },
-      { titulo: 'Usuários', url: '/usuarios', icone: Users },
     ],
   },
   {
@@ -47,12 +46,18 @@ const secoes = [
     ],
   },
   {
+    label: 'Admin',
+    itens: [
+      { titulo: 'Usuários', url: '/usuarios', icone: Users },
+    ],
+  },
+  {
     label: 'Análise',
     itens: [
       { titulo: 'Relatórios', url: '/relatorios', icone: BarChart3 },
       { titulo: 'Configurações', url: '/configuracoes', icone: Settings },
     ],
-  },
+  }
 ]
 
 const ui = useUiStore()

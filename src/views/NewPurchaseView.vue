@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { RouterLink, useRouter } from 'vue-router'
 import { onMounted, computed, ref } from 'vue'
-import { ArrowDownRight, Check, FileCode, Loader2, Minus, Plus, Trash2, Upload } from 'lucide-vue-next'
+import { ArrowDownRight, Check, FileCode, Loader2, Minus, Plus, Search, Trash2, Upload } from 'lucide-vue-next'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
 import EmptyState from '@/components/page-shell/EmptyState.vue'
 import FieldLabel from '@/components/ui-kit/FieldLabel.vue'
-import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import NewSupplier from '@/components/NewSupplier.vue'
 
@@ -36,7 +35,9 @@ const { sucesso, erro, info } = useFeedback()
 
 const passo = ref(1)
 const fornecedor = ref('')
-const busca = ref('')
+const buscaFornecedor = ref('')
+const buscaProduto = ref('')
+const grupoSelecionado = ref('todos')
 const itens = ref<Item[]>([])
 const salvando = ref(false)
 const modalFornecedorAberto = ref(false)
@@ -46,16 +47,42 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const passos = ['Fornecedor', 'Produtos e valores', 'Revisar e finalizar']
 
-const fornecedoresAtivos = computed(() => fornecedores.filter((f) => f.status === 'ativo'))
+// ---- Passo 1: Fornecedores em Ordem Alfabética e Filtráveis ----
+const fornecedoresAtivos = computed(() => {
+  return [...fornecedores]
+    .filter((f) => f.status === 'ativo')
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+})
 
-const total = computed(() => itens.value.reduce((s, i) => s + i.qtd * i.valor, 0))
+const fornecedoresFiltrados = computed(() => {
+  if (!buscaFornecedor.value.trim()) return fornecedoresAtivos.value
+  return fornecedoresAtivos.value.filter((f) =>
+    f.nome.toLowerCase().includes(buscaFornecedor.value.toLowerCase()),
+  )
+})
 
-const encontrados = computed(() =>
-  produtos.filter(
-    (p) =>
-      busca.value.trim() !== '' &&
-      [p.nome, p.sku].some((c) => c.toLowerCase().includes(busca.value.toLowerCase())),
-  ),
+// ---- Passo 2: Grupos e Produtos ----
+const grupos = computed(() => {
+  const lista = produtos.map((p) => p.grupo || p.categoria).filter(Boolean)
+  return ['todos', ...Array.from(new Set(lista))]
+})
+
+const produtosFiltrados = computed(() => {
+  return produtos.filter((p) => {
+    const grupoProduto = p.grupo || p.categoria
+    const atendeGrupo =
+      grupoSelecionado.value === 'todos' || grupoProduto === grupoSelecionado.value
+    const atendeBusca =
+      !buscaProduto.value.trim() ||
+      [p.nome, p.sku].some((c) =>
+        c.toLowerCase().includes(buscaProduto.value.toLowerCase()),
+      )
+    return atendeGrupo && atendeBusca
+  })
+})
+
+const total = computed(() =>
+  itens.value.reduce((s, i) => s + (Number(i.qtd) || 0) * (Number(i.valor) || 0), 0),
 )
 
 function adicionar(id: string) {
@@ -66,7 +93,6 @@ function adicionar(id: string) {
   } else {
     itens.value.push({ id, nome: p.nome, qtd: 1, valor: p.custo })
   }
-  busca.value = ''
 }
 
 function remover(id: string) {
@@ -75,15 +101,12 @@ function remover(id: string) {
 
 function alterarQtd(id: string, delta: number) {
   const item = itens.value.find((x) => x.id === id)
-  if (item) item.qtd = Math.max(1, item.qtd + delta)
+  if (item) {
+    item.qtd = Math.max(1, (Number(item.qtd) || 0) + delta)
+  }
 }
 
-function onInputValor(id: string, e: Event) {
-  const item = itens.value.find((x) => x.id === id)
-  if (item) item.valor = Number((e.target as HTMLInputElement).value)
-}
-
-// Controle do Modal de Novo Fornecedor
+// ---- Modal e Cadastro Rápidos de Fornecedor ----
 function abrirModalFornecedor() {
   modalFornecedorAberto.value = true
 }
@@ -99,7 +122,7 @@ function fornecedorCriado(payload: any) {
   sucesso('Fornecedor cadastrado', `${novo.nome} foi selecionado para esta compra.`)
 }
 
-// Importação e Processamento do XML da Nota Fiscal
+// ---- Leitura e Importação de XML ----
 function dispararImportacaoXml() {
   fileInputRef.value?.click()
 }
@@ -119,10 +142,9 @@ function processarXml(e: Event) {
   const reader = new FileReader()
   reader.onload = () => {
     setTimeout(() => {
-      // Simulação da leitura dos itens contidos no XML da NF-e
       const itensImportados = [
-        { id: produtos[0]?.id || '1', nome: produtos[0]?.nome || 'Produto Importado 1', qtd: 10, valor: produtos[0]?.custo || 25.50 },
-        { id: produtos[1]?.id || '2', nome: produtos[1]?.nome || 'Produto Importado 2', qtd: 5, valor: produtos[1]?.custo || 140.00 },
+        { id: produtos[0]?.id || '1', nome: produtos[0]?.nome || 'Produto Importado 1', qtd: 10, valor: produtos[0]?.custo || 25.5 },
+        { id: produtos[1]?.id || '2', nome: produtos[1]?.nome || 'Produto Importado 2', qtd: 5, valor: produtos[1]?.custo || 140.0 },
       ]
 
       itensImportados.forEach((novoItem) => {
@@ -209,10 +231,30 @@ function finalizar() {
             <SelectTrigger id="fornecedor" class="h-10 cursor-pointer bg-surface">
               <SelectValue placeholder="Selecione o fornecedor" />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="f in fornecedoresAtivos" :key="f.id" :value="f.nome" class="cursor-pointer">
+            <SelectContent class="max-h-64">
+              <div class="p-2 border-b border-border sticky top-0 bg-popover z-10">
+                <div class="relative">
+                  <Search class="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    v-model="buscaFornecedor"
+                    placeholder="Pesquisar fornecedor..."
+                    class="h-8 text-xs pl-8 pr-2"
+                    @click.stop
+                    @keydown.stop
+                  />
+                </div>
+              </div>
+              <SelectItem
+                v-for="f in fornecedoresFiltrados"
+                :key="f.id"
+                :value="f.nome"
+                class="cursor-pointer text-xs"
+              >
                 {{ f.nome }}
               </SelectItem>
+              <div v-if="fornecedoresFiltrados.length === 0" class="py-3 text-center text-xs text-muted-foreground">
+                Nenhum fornecedor encontrado.
+              </div>
             </SelectContent>
           </Select>
           <button
@@ -233,16 +275,10 @@ function finalizar() {
       </div>
     </Section>
 
-    <div v-else-if="passo === 2" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <Section titulo="Adicionar produtos" descricao="Busque os produtos manual ou importe a Nota Fiscal por XML.">
+    <div v-else-if="passo === 2" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <Section titulo="Adicionar produtos" descricao="Seleção da lista completa de produtos ou importação de NF-e via XML.">
         <div class="space-y-4 p-4 md:p-5">
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept=".xml"
-            class="hidden"
-            @change="processarXml"
-          />
+          <input ref="fileInputRef" type="file" accept=".xml" class="hidden" @change="processarXml" />
 
           <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface-2 p-3.5">
             <div class="space-y-0.5">
@@ -270,28 +306,55 @@ function finalizar() {
 
           <div class="relative flex items-center py-1">
             <div class="grow border-t border-border"></div>
-            <span class="shrink px-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">ou busque manualmente</span>
+            <span class="shrink px-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">ou selecione da lista</span>
             <div class="grow border-t border-border"></div>
           </div>
 
-          <SearchField v-model="busca" label="Buscar produto para a compra" placeholder="Buscar por nome ou SKU..." />
-          <ul v-if="encontrados.length > 0" class="divide-y divide-border overflow-hidden rounded-lg border border-border">
-            <li
-              v-for="p in encontrados"
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+            <div class="sm:col-span-8 relative">
+              <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
+              <Input
+                v-model="buscaProduto"
+                placeholder="Buscar por nome ou SKU..."
+                class="h-9 text-xs pl-9 cursor-text"
+              />
+            </div>
+
+            <div class="sm:col-span-4">
+              <Select v-model="grupoSelecionado">
+                <SelectTrigger class="h-9 text-xs cursor-pointer">
+                  <SelectValue placeholder="Grupo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="g in grupos" :key="g" :value="g" class="cursor-pointer text-xs capitalize">
+                    {{ g === 'todos' ? 'Todos os Grupos' : g }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div class="max-h-[380px] overflow-y-auto border border-border rounded-lg divide-y divide-border">
+            <div
+              v-for="p in produtosFiltrados"
               :key="p.id"
-              class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 bg-surface px-3 py-2.5"
+              class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 bg-surface px-3 py-2.5 transition-colors hover:bg-muted/40"
             >
               <div class="min-w-0">
-                <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-                <p class="text-meta">
-                  {{ p.sku }} · custo {{ brl(p.custo) }} · estoque {{ p.estoque }} un.
+                <p class="truncate text-xs font-medium">{{ p.nome }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">
+                  {{ p.sku }} · Grupo: <span class="capitalize">{{ p.grupo || p.categoria || 'Geral' }}</span> · Custo {{ brl(p.custo) }} · Estoque: {{ p.estoque }} un.
                 </p>
               </div>
-              <Button size="sm" class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600" @click="adicionar(p.id)">
-                <Plus class="size-4" /> Adicionar
+              <Button size="sm" class="cursor-pointer h-8 text-xs bg-emerald-500 text-black hover:bg-emerald-600" @click="adicionar(p.id)">
+                <Plus class="size-3.5 mr-1" /> Adicionar
               </Button>
-            </li>
-          </ul>
+            </div>
+
+            <div v-if="produtosFiltrados.length === 0" class="p-6 text-center text-xs text-muted-foreground">
+              Nenhum produto encontrado com os filtros aplicados.
+            </div>
+          </div>
         </div>
       </Section>
 
@@ -299,62 +362,74 @@ function finalizar() {
         <EmptyState
           v-if="itens.length === 0"
           titulo="Nenhum produto adicionado"
-          descricao="Use a busca ao lado ou importe o arquivo XML da nota fiscal."
+          descricao="Selecione produtos na lista ao lado ou importe uma Nota Fiscal por XML."
         />
         <template v-else>
-          <ul class="divide-y divide-border max-h-[420px] overflow-y-auto">
+          <ul class="divide-y divide-border max-h-[360px] overflow-y-auto">
             <li v-for="i in itens" :key="i.id" class="space-y-2 px-4 py-3">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                <p class="truncate text-sm font-medium">{{ i.nome }}</p>
+                <p class="truncate text-xs font-medium">{{ i.nome }}</p>
                 <Button
                   variant="ghost"
                   size="icon"
-                  class="cursor-pointer h-7 w-7"
+                  class="cursor-pointer h-6 w-6 text-destructive hover:bg-destructive/10"
                   :aria-label="`Remover ${i.nome}`"
                   @click="remover(i.id)"
                 >
-                  <Trash2 class="size-4 text-destructive" />
+                  <Trash2 class="size-3.5" />
                 </Button>
               </div>
-              <div class="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  class="cursor-pointer size-8"
-                  aria-label="Diminuir quantidade"
-                  @click="alterarQtd(i.id, -1)"
-                >
-                  <Minus class="size-3.5" />
-                </Button>
-                <span class="w-8 text-center text-xs font-semibold">{{ i.qtd }}</span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  class="cursor-pointer size-8"
-                  aria-label="Aumentar quantidade"
-                  @click="alterarQtd(i.id, 1)"
-                >
-                  <Plus class="size-3.5" />
-                </Button>
-                <Input
-                  type="number"
-                  :min="0"
-                  step="0.01"
-                  :value="i.valor"
-                  :aria-label="`Valor unitário de ${i.nome}`"
-                  class="h-8 text-xs cursor-text bg-surface"
-                  @input="onInputValor(i.id, $event)"
-                />
-                <span class="ml-auto shrink-0 text-xs font-semibold tabular-nums">
-                  {{ brl(i.qtd * i.valor) }}
+
+              <div class="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+                <div class="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    class="cursor-pointer size-7"
+                    aria-label="Diminuir quantidade"
+                    @click="alterarQtd(i.id, -1)"
+                  >
+                    <Minus class="size-3" />
+                  </Button>
+                  <Input
+                    v-model.number="i.qtd"
+                    type="number"
+                    min="1"
+                    class="h-7 w-12 text-center text-xs cursor-text p-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    class="cursor-pointer size-7"
+                    aria-label="Aumentar quantidade"
+                    @click="alterarQtd(i.id, 1)"
+                  >
+                    <Plus class="size-3" />
+                  </Button>
+                </div>
+
+                <div class="relative">
+                  <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">R$</span>
+                  <Input
+                    v-model.number="i.valor"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="h-7 text-xs cursor-text pl-7 pr-1"
+                  />
+                </div>
+
+                <span class="text-xs font-semibold tabular-nums text-right min-w-[70px]">
+                  {{ brl((Number(i.qtd) || 0) * (Number(i.valor) || 0)) }}
                 </span>
               </div>
             </li>
           </ul>
+
           <div class="space-y-3 border-t border-border p-4">
             <div class="flex items-center justify-between">
-              <span class="text-sm text-muted-foreground">Total da compra</span>
-              <span class="text-metric">{{ brl(total) }}</span>
+              <span class="text-xs text-muted-foreground">Total da compra</span>
+              <span class="text-metric text-lg font-bold">{{ brl(total) }}</span>
             </div>
             <Button class="w-full cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600" @click="passo = 3">
               Revisar compra
@@ -374,7 +449,7 @@ function finalizar() {
           <div class="rounded-lg border border-border bg-surface-2 p-3">
             <p class="text-meta">Itens</p>
             <p class="text-sm font-medium">
-              {{ itens.length }} produtos · {{ itens.reduce((s, i) => s + i.qtd, 0) }} unidades
+              {{ itens.length }} produtos · {{ itens.reduce((s, i) => s + (Number(i.qtd) || 0), 0) }} unidades
             </p>
           </div>
         </div>
@@ -383,7 +458,7 @@ function finalizar() {
             <span class="truncate">
               {{ i.nome }} <span class="text-muted-foreground">× {{ i.qtd }}</span>
             </span>
-            <span class="font-semibold">{{ brl(i.qtd * i.valor) }}</span>
+            <span class="font-semibold">{{ brl((Number(i.qtd) || 0) * (Number(i.valor) || 0)) }}</span>
           </li>
         </ul>
         <div class="flex items-center justify-between border-t border-border pt-3">
