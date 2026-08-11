@@ -22,13 +22,18 @@ const router = createRouter({
       path: '/vendas',
       name: 'vendas',
       component: () => import('@/views/SaleView.vue'),
-    }
-    ,
+    },
     {
       path: '/usuarios',
       name: 'usuarios',
       component: () => import('@/views/UserView.vue'),
+    },
+    {
+      path: '/grupos',
+      name: 'grupos',
+      component: () => import('@/views/GroupsView.vue'),
     }
+
   ],
 })
 
