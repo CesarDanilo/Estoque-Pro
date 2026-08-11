@@ -61,7 +61,8 @@ const status = ref('todos')
 const pagina = ref(1)
 const carregando = ref(false)
 const excluir = ref(null)
-const modalAberto = ref(false) // controla o modal de cadastro
+const modalAberto = ref(false) // controla o modal de cadastro/edição
+const pessoaEditando = ref(null) // pessoa selecionada para edição, ou null = cadastro
 
 function apenasNumeros(texto) {
   return (texto || '').replace(/\D/g, '')
@@ -136,7 +137,7 @@ const visiveis = computed(() =>
   ordenadas.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA)
 )
 
-const { sucesso, info } = useFeedback()
+const { sucesso } = useFeedback()
 
 function limpar() {
   busca.value = ''
@@ -151,6 +152,12 @@ function exportar() {
 }
 
 function abrirModal() {
+  pessoaEditando.value = null
+  modalAberto.value = true
+}
+
+function abrirEdicao(pessoa) {
+  pessoaEditando.value = pessoa
   modalAberto.value = true
 }
 
@@ -163,14 +170,38 @@ function pessoaCriada(pessoa) {
     telefone: pessoa.telefone,
     email: pessoa.email || '',
     grupo: pessoa.grupo,
+    genero: pessoa.genero,
+    nascimento: pessoa.nascimento,
+    cep: pessoa.cep,
+    cidade: pessoa.cidade,
+    endereco: pessoa.endereco,
+    observacoes: pessoa.observacoes,
     status: pessoa.ativo ? 'ativo' : 'inativo',
     cadastro: new Date().toISOString().slice(0, 10),
   })
   pagina.value = 1
 }
 
-function abrirCadastro() {
-  info('Abrindo cadastro', 'Redirecionando para o cadastro da pessoa…')
+function pessoaAtualizada(pessoa) {
+  // mock: atualiza a pessoa correspondente na lista local; troque por refetch quando integrar a API
+  const index = pessoas.findIndex((p) => p.id === pessoa.id)
+  if (index === -1) return
+
+  pessoas[index] = {
+    ...pessoas[index],
+    nome: pessoa.nome,
+    documento: pessoa.documento,
+    telefone: pessoa.telefone,
+    email: pessoa.email || '',
+    grupo: pessoa.grupo,
+    genero: pessoa.genero,
+    nascimento: pessoa.nascimento,
+    cep: pessoa.cep,
+    cidade: pessoa.cidade,
+    endereco: pessoa.endereco,
+    observacoes: pessoa.observacoes,
+    status: pessoa.ativo ? 'ativo' : 'inativo',
+  }
 }
 
 function confirmarExclusao() {
@@ -270,9 +301,26 @@ function confirmarExclusao() {
                 <p class="truncate text-sm font-medium">{{ p.nome }}</p>
                 <p class="truncate text-xs text-muted-foreground">{{ p.documento }} · {{ p.telefone }}</p>
               </div>
-              <StatusPill :tom="p.status === 'ativo' ? 'success' : 'neutral'">
-                {{ p.status === 'ativo' ? 'Ativa' : 'Inativa' }}
-              </StatusPill>
+              <div class="flex items-center gap-1">
+                <StatusPill :tom="p.status === 'ativo' ? 'success' : 'neutral'">
+                  {{ p.status === 'ativo' ? 'Ativa' : 'Inativa' }}
+                </StatusPill>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button variant="ghost" size="icon" class="cursor-pointer" :aria-label="`Ações para ${p.nome}`">
+                      <MoreHorizontal class="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao(p)">
+                      <Pencil class="size-4" /> Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = p">
+                      <Trash2 class="size-4" /> Excluir
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
             <div class="flex items-center justify-between">
               <StatusPill tom="info">{{ p.grupo }}</StatusPill>
@@ -342,7 +390,7 @@ function confirmarExclusao() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem class="cursor-pointer" @click="abrirCadastro">
+                      <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao(p)">
                         <Pencil class="size-4" /> Editar
                       </DropdownMenuItem>
                       <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = p">
@@ -402,5 +450,10 @@ function confirmarExclusao() {
     </AlertDialogContent>
   </AlertDialog>
 
-  <NewPerson v-model:open="modalAberto" @created="pessoaCriada" />
+  <NewPerson
+    v-model:open="modalAberto"
+    :pessoa="pessoaEditando"
+    @created="pessoaCriada"
+    @updated="pessoaAtualizada"
+  />
 </template>

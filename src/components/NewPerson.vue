@@ -30,9 +30,11 @@ import { useFeedback } from '@/composables/useFeedBack'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
+  // quando preenchida, o modal entra em modo edição e popula os campos
+  pessoa: { type: Object, default: null },
 })
 
-const emit = defineEmits(['update:open', 'created'])
+const emit = defineEmits(['update:open', 'created', 'updated'])
 
 const { sucesso, erro } = useFeedback()
 
@@ -60,6 +62,8 @@ const form = reactive({
   ativo: true,
   observacoes: '',
 })
+
+const modoEdicao = computed(() => !!props.pessoa)
 
 function dataLocalHoje() {
   const agora = new Date()
@@ -90,7 +94,7 @@ const documentoBadge = computed(() => {
 watch(
   () => props.open,
   (aberto) => {
-    if (aberto) resetar()
+    if (aberto) preencherFormulario()
   },
 )
 
@@ -165,19 +169,38 @@ watch(
   },
 )
 
-function resetar() {
-  form.nome = ''
-  form.grupo = 'Cliente'
-  form.genero = 'Não informado'
-  form.nascimento = ''
-  form.cidade = ''
-  form.endereco = ''
-  form.ativo = true
-  form.observacoes = ''
-  documento.setValue('')
-  telefone.setValue('')
-  cep.setValue('')
-  email.value = ''
+// popula o formulário com os dados da pessoa (modo edição) ou zera tudo (modo criação)
+function preencherFormulario() {
+  const p = props.pessoa
+
+  if (p) {
+    form.nome = p.nome ?? ''
+    form.grupo = p.grupo ?? 'Cliente'
+    form.genero = p.genero ?? 'Não informado'
+    form.nascimento = p.nascimento ?? ''
+    form.cidade = p.cidade ?? ''
+    form.endereco = p.endereco ?? ''
+    form.ativo = p.status ? p.status === 'ativo' : (p.ativo ?? true)
+    form.observacoes = p.observacoes ?? ''
+    documento.setValue(p.documento ?? '')
+    telefone.setValue(p.telefone ?? '')
+    cep.setValue(p.cep ?? '')
+    email.value = p.email ?? ''
+  } else {
+    form.nome = ''
+    form.grupo = 'Cliente'
+    form.genero = 'Não informado'
+    form.nascimento = ''
+    form.cidade = ''
+    form.endereco = ''
+    form.ativo = true
+    form.observacoes = ''
+    documento.setValue('')
+    telefone.setValue('')
+    cep.setValue('')
+    email.value = ''
+  }
+
   email.status = 'idle'
   Object.keys(erros).forEach((chave) => delete erros[chave])
 }
@@ -275,8 +298,15 @@ async function salvar() {
   salvando.value = true
   try {
     await new Promise((resolve) => setTimeout(resolve, 900))
-    sucesso('Pessoa cadastrada com sucesso.')
-    emit('created', payload)
+
+    if (modoEdicao.value) {
+      sucesso('Pessoa atualizada com sucesso.')
+      emit('updated', { id: props.pessoa.id, ...payload })
+    } else {
+      sucesso('Pessoa cadastrada com sucesso.')
+      emit('created', payload)
+    }
+
     fechar()
   } finally {
     salvando.value = false
@@ -288,7 +318,9 @@ async function salvar() {
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent class="w-[950px] max-w-[95vw] overflow-y-auto p-8 sm:max-w-[950px]">
       <DialogHeader class="space-y-1">
-        <DialogTitle class="text-xl font-semibold tracking-tight">Nova pessoa</DialogTitle>
+        <DialogTitle class="text-xl font-semibold tracking-tight">
+          {{ modoEdicao ? 'Editar pessoa' : 'Nova pessoa' }}
+        </DialogTitle>
         <DialogDescription class="text-sm text-muted-foreground">
           Os campos marcados com <span class="text-destructive">*</span> são obrigatórios.
         </DialogDescription>
@@ -523,7 +555,7 @@ async function salvar() {
           >
             <Loader2 v-if="salvando" class="size-4 animate-spin" />
             <Save v-else class="size-4" />
-            {{ salvando ? 'Salvando…' : 'Salvar pessoa' }}
+            {{ salvando ? 'Salvando…' : modoEdicao ? 'Salvar alterações' : 'Salvar pessoa' }}
           </Button>
         </DialogFooter>
       </form>
