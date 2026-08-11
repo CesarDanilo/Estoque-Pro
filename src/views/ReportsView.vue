@@ -1,6 +1,16 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { Download, FileBarChart, Package, ShoppingCart, Users } from 'lucide-vue-next'
+import {
+  ChevronDown,
+  Download,
+  FileBarChart,
+  Package,
+  Search,
+  ShoppingCart,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from 'lucide-vue-next'
 import { Bar, Line, Pie } from 'vue-chartjs'
 import {
   ArcElement,
@@ -14,11 +24,12 @@ import {
   PointElement,
   Tooltip as ChartTooltip,
 } from 'chart.js'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
 import TableSkeleton from '@/components/page-shell/TableSkeleton.vue'
-import  MetricCard from '@/components/ui-kit/MetricCard.vue'
+import MetricCard from '@/components/ui-kit/MetricCard.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -53,7 +64,8 @@ ChartJS.register(
   ArcElement,
   ChartTooltip,
   Legend,
-  Filler
+  Filler,
+  ChartDataLabels
 )
 
 const { sucesso } = useFeedback()
@@ -104,7 +116,7 @@ const tooltipBase = computed(() => ({
   displayColors: false,
 }))
 
-// ---- Dados derivados (mesma lógica da versão de referência) ----
+// ---- Dados derivados ----
 const porGrupoPessoas = computed(() =>
   ['Cliente', 'Fornecedor', 'Colaborador'].map((g) => ({
     nome: g,
@@ -118,6 +130,7 @@ const porGeneroPessoas = computed(() =>
     valor: pessoas.filter((p) => p.genero === g).length,
   }))
 )
+const totalPessoasGenero = computed(() => porGeneroPessoas.value.reduce((s, p) => s + p.valor, 0))
 
 const comprasPorFornecedor = computed(() =>
   Array.from(new Set(compras.map((c) => c.fornecedor))).map((f) => ({
@@ -132,6 +145,11 @@ const produtosPorGrupo = computed(() =>
     valor: produtos.filter((p) => p.grupo === g).length,
   }))
 )
+const totalProdutosGrupo = computed(() => produtosPorGrupo.value.reduce((s, p) => s + p.valor, 0))
+const grupoAtivo = ref(null)
+function alternarGrupo(nome) {
+  grupoAtivo.value = grupoAtivo.value === nome ? null : nome
+}
 
 const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0))
 const baixos = computed(() => produtos.filter((p) => nivelEstoque(p) !== 'normal'))
@@ -147,7 +165,80 @@ const itensVendidos = computed(() =>
   String(vendas.reduce((s, v) => s + v.itens.reduce((a, i) => a + i.qtd, 0), 0))
 )
 
-// ---- Chart: Vendas por dia (linha) ----
+// ==================================================================
+// PRODUTOS MAIS VENDIDOS — busca + rolagem + paginação + expandível
+// ==================================================================
+const buscaMaisVendidos = ref('')
+const limiteMaisVendidos = ref(10)
+const expandidoVendidosId = ref(null)
+
+const maisVendidosFiltrados = computed(() => {
+  const termo = buscaMaisVendidos.value.trim().toLowerCase()
+  const base = termo ? maisVendidos.filter((p) => p.nome.toLowerCase().includes(termo)) : maisVendidos
+  return [...base].sort((a, b) => b.vendidos30d - a.vendidos30d)
+})
+const maxVendidos30d = computed(() =>
+  Math.max(1, ...maisVendidosFiltrados.value.map((p) => p.vendidos30d))
+)
+const totalVendidosListados = computed(() =>
+  maisVendidosFiltrados.value.reduce((s, p) => s + p.vendidos30d, 0)
+)
+const maisVendidosVisiveis = computed(() => maisVendidosFiltrados.value.slice(0, limiteMaisVendidos.value))
+
+function carregarMaisVendidos() {
+  limiteMaisVendidos.value += 10
+}
+function alternarExpandidoVendidos(id) {
+  expandidoVendidosId.value = expandidoVendidosId.value === id ? null : id
+}
+function detalheProduto(id) {
+  return produtos.find((p) => p.id === id) ?? null
+}
+
+// ==================================================================
+// REPOSIÇÃO — busca + rolagem + clicável/expansível
+// ==================================================================
+const buscaReposicao = ref('')
+const expandidoReposicaoId = ref(null)
+
+const baixosFiltrados = computed(() => {
+  const termo = buscaReposicao.value.trim().toLowerCase()
+  if (!termo) return baixos.value
+  return baixos.value.filter((p) => p.nome.toLowerCase().includes(termo))
+})
+function alternarExpandidoReposicao(id) {
+  expandidoReposicaoId.value = expandidoReposicaoId.value === id ? null : id
+}
+
+// ==================================================================
+// VENDAS POR DIA — resumo estatístico
+// ==================================================================
+const indicePico = computed(() => {
+  let idx = 0
+  vendasPorDia.forEach((v, i) => {
+    if (v.vendas > vendasPorDia[idx].vendas) idx = i
+  })
+  return idx
+})
+const indiceMinimo = computed(() => {
+  let idx = 0
+  vendasPorDia.forEach((v, i) => {
+    if (v.vendas < vendasPorDia[idx].vendas) idx = i
+  })
+  return idx
+})
+const totalPeriodo = computed(() => vendasPorDia.reduce((s, v) => s + v.vendas, 0))
+const mediaDiaria = computed(() => totalPeriodo.value / (vendasPorDia.length || 1))
+const variacaoPeriodo = computed(() => {
+  if (vendasPorDia.length < 2) return 0
+  const metade = Math.floor(vendasPorDia.length / 2)
+  const primeira = vendasPorDia.slice(0, metade).reduce((s, v) => s + v.vendas, 0)
+  const segunda = vendasPorDia.slice(metade).reduce((s, v) => s + v.vendas, 0)
+  if (primeira === 0) return 0
+  return ((segunda - primeira) / primeira) * 100
+})
+
+// ---- Chart: Vendas por dia (área elaborada) ----
 const dadosVendasPorDia = computed(() => ({
   labels: vendasPorDia.map((v) => v.dia),
   datasets: [
@@ -155,11 +246,35 @@ const dadosVendasPorDia = computed(() => ({
       label: 'Vendas',
       data: vendasPorDia.map((v) => v.vendas),
       borderColor: paleta.value[0],
-      backgroundColor: paleta.value[0],
+      backgroundColor: (context) => {
+        const { ctx, chartArea } = context.chart
+        if (!chartArea) return `${paleta.value[0]}22`
+        const gradiente = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
+        gradiente.addColorStop(0, `${paleta.value[0]}55`)
+        gradiente.addColorStop(1, `${paleta.value[0]}00`)
+        return gradiente
+      },
       tension: 0.35,
-      pointRadius: 0,
       borderWidth: 2,
-      fill: false,
+      fill: true,
+      pointBackgroundColor: vendasPorDia.map((_, i) =>
+        i === indicePico.value ? '#22c55e' : i === indiceMinimo.value ? '#ef4444' : paleta.value[0]
+      ),
+      pointRadius: vendasPorDia.map((_, i) =>
+        i === indicePico.value || i === indiceMinimo.value ? 5 : 0
+      ),
+      pointHoverRadius: 6,
+      datalabels: {
+        align: 'top',
+        anchor: 'end',
+        color: corTexto.value,
+        font: { size: 10, weight: '600' },
+        formatter: (valor, ctx) => {
+          const idx = ctx.dataIndex
+          if (idx === indicePico.value || idx === indiceMinimo.value) return brl(valor)
+          return ''
+        },
+      },
     },
   ],
 }))
@@ -167,7 +282,27 @@ const dadosVendasPorDia = computed(() => ({
 const opcoesVendasPorDia = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
-  plugins: { legend: { display: false }, tooltip: tooltipBase.value },
+  interaction: { mode: 'index', intersect: false },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      ...tooltipBase.value,
+      callbacks: {
+        label: (ctx) => {
+          const valor = ctx.parsed.y
+          const idx = ctx.dataIndex
+          const anterior = idx > 0 ? ctx.dataset.data[idx - 1] : null
+          let linha = `Faturamento: ${brl(valor)}`
+          if (anterior !== null && anterior !== 0) {
+            const variacao = ((valor - anterior) / anterior) * 100
+            const sinal = variacao >= 0 ? '+' : ''
+            linha += ` (${sinal}${variacao.toFixed(1)}% vs dia anterior)`
+          }
+          return linha
+        },
+      },
+    },
+  },
   scales: {
     x: { grid: { display: false }, ticks: { color: corEixo.value, font: { size: 12 } } },
     y: {
@@ -177,7 +312,7 @@ const opcoesVendasPorDia = computed(() => ({
   },
 }))
 
-// ---- Chart: Vendas por grupo (barra) ----
+// ---- Chart: Vendas por grupo (com rótulos de valor) ----
 const dadosVendasPorGrupo = computed(() => ({
   labels: vendasPorGrupo.map((v) => v.grupo),
   datasets: [
@@ -187,6 +322,13 @@ const dadosVendasPorGrupo = computed(() => ({
       backgroundColor: paleta.value[0],
       borderRadius: 6,
       maxBarThickness: 40,
+      datalabels: {
+        anchor: 'end',
+        align: 'top',
+        color: corTexto.value,
+        font: { size: 10, weight: '600' },
+        formatter: (valor) => brl(valor),
+      },
     },
   ],
 }))
@@ -194,6 +336,7 @@ const dadosVendasPorGrupo = computed(() => ({
 const opcoesVendasPorGrupo = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  layout: { padding: { top: 20 } },
   plugins: { legend: { display: false }, tooltip: tooltipBase.value },
   scales: {
     x: { grid: { display: false }, ticks: { color: corEixo.value, font: { size: 12 } } },
@@ -204,7 +347,7 @@ const opcoesVendasPorGrupo = computed(() => ({
   },
 }))
 
-// ---- Chart: Compras por fornecedor (barra horizontal) ----
+// ---- Chart: Compras por fornecedor (com rótulos de valor) ----
 const dadosComprasPorFornecedor = computed(() => ({
   labels: comprasPorFornecedor.value.map((c) => c.nome),
   datasets: [
@@ -214,6 +357,13 @@ const dadosComprasPorFornecedor = computed(() => ({
       backgroundColor: paleta.value[1],
       borderRadius: 6,
       maxBarThickness: 24,
+      datalabels: {
+        anchor: 'end',
+        align: 'right',
+        color: corTexto.value,
+        font: { size: 10, weight: '600' },
+        formatter: (valor) => brl(valor),
+      },
     },
   ],
 }))
@@ -222,6 +372,7 @@ const opcoesComprasPorFornecedor = computed(() => ({
   indexAxis: 'y',
   responsive: true,
   maintainAspectRatio: false,
+  layout: { padding: { right: 56 } },
   plugins: { legend: { display: false }, tooltip: tooltipBase.value },
   scales: {
     x: { grid: { display: false }, ticks: { display: false } },
@@ -229,7 +380,7 @@ const opcoesComprasPorFornecedor = computed(() => ({
   },
 }))
 
-// ---- Chart: Produtos por grupo (donut) ----
+// ---- Chart: Produtos por grupo (donut com percentuais) ----
 const dadosProdutosPorGrupo = computed(() => ({
   labels: produtosPorGrupo.value.map((p) => p.nome),
   datasets: [
@@ -246,12 +397,20 @@ const opcoesDonut = computed(() => ({
   maintainAspectRatio: false,
   cutout: '55%',
   plugins: {
-    legend: { position: 'bottom', labels: { color: corEixo.value, boxWidth: 10, font: { size: 11 } } },
+    legend: { display: false },
     tooltip: tooltipBase.value,
+    datalabels: {
+      color: '#fff',
+      font: { size: 11, weight: '700' },
+      formatter: (valor) => {
+        const total = totalProdutosGrupo.value || 1
+        return `${Math.round((valor / total) * 100)}%`
+      },
+    },
   },
 }))
 
-// ---- Chart: Pessoas por grupo (barra) ----
+// ---- Chart: Pessoas por grupo (com rótulos de contagem) ----
 const dadosPessoasPorGrupo = computed(() => ({
   labels: porGrupoPessoas.value.map((p) => p.nome),
   datasets: [
@@ -261,6 +420,13 @@ const dadosPessoasPorGrupo = computed(() => ({
       backgroundColor: paleta.value[0],
       borderRadius: 6,
       maxBarThickness: 40,
+      datalabels: {
+        anchor: 'end',
+        align: 'top',
+        color: corTexto.value,
+        font: { size: 11, weight: '600' },
+        formatter: (valor) => String(valor),
+      },
     },
   ],
 }))
@@ -268,6 +434,7 @@ const dadosPessoasPorGrupo = computed(() => ({
 const opcoesPessoasPorGrupo = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  layout: { padding: { top: 20 } },
   plugins: { legend: { display: false }, tooltip: tooltipBase.value },
   scales: {
     x: { grid: { display: false }, ticks: { color: corEixo.value, font: { size: 12 } } },
@@ -275,7 +442,7 @@ const opcoesPessoasPorGrupo = computed(() => ({
   },
 }))
 
-// ---- Chart: Pessoas por gênero (pizza) ----
+// ---- Chart: Pessoas por gênero (pizza com percentuais) ----
 const dadosPessoasPorGenero = computed(() => ({
   labels: porGeneroPessoas.value.map((p) => p.nome),
   datasets: [
@@ -291,8 +458,16 @@ const opcoesPizza = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
-    legend: { position: 'bottom', labels: { color: corEixo.value, boxWidth: 10, font: { size: 11 } } },
+    legend: { display: false },
     tooltip: tooltipBase.value,
+    datalabels: {
+      color: '#fff',
+      font: { size: 11, weight: '700' },
+      formatter: (valor) => {
+        const total = totalPessoasGenero.value || 1
+        return `${Math.round((valor / total) * 100)}%`
+      },
+    },
   },
 }))
 </script>
@@ -337,7 +512,7 @@ const opcoesPizza = computed(() => ({
         </TabsTrigger>
       </TabsList>
 
-      <!-- VENDAS -->
+      <!-- ============================= VENDAS ============================= -->
       <TabsContent value="vendas" class="space-y-4">
         <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <MetricCard rotulo="Faturamento" :valor="faturamento" tom="success" />
@@ -346,35 +521,141 @@ const opcoesPizza = computed(() => ({
           <MetricCard rotulo="Produtos sem vendas" :valor="String(semVendas.length)" tom="warning" />
         </div>
 
-        <Section titulo="Vendas por dia" descricao="Evolução do faturamento no período.">
+        <Section titulo="Vendas por dia" descricao="Evolução do faturamento no período, com destaque para os extremos.">
           <TableSkeleton v-if="carregando" :linhas="4" :colunas="3" />
-          <div v-else class="h-64 p-3 md:p-4">
-            <Line :data="dadosVendasPorDia" :options="opcoesVendasPorDia" />
-          </div>
+          <template v-else>
+            <div class="grid grid-cols-2 gap-3 border-b border-border p-3 md:grid-cols-4 md:p-4">
+              <div class="rounded-lg bg-surface p-3">
+                <p class="text-meta">Total do período</p>
+                <p class="text-lg font-semibold">{{ brl(totalPeriodo) }}</p>
+              </div>
+              <div class="rounded-lg bg-surface p-3">
+                <p class="text-meta">Média diária</p>
+                <p class="text-lg font-semibold">{{ brl(mediaDiaria) }}</p>
+              </div>
+              <div class="rounded-lg bg-surface p-3">
+                <p class="text-meta">Melhor dia</p>
+                <p class="truncate text-lg font-semibold text-emerald-600">
+                  {{ vendasPorDia[indicePico]?.dia }} · {{ brl(vendasPorDia[indicePico]?.vendas ?? 0) }}
+                </p>
+              </div>
+              <div class="rounded-lg bg-surface p-3">
+                <p class="text-meta">Variação no período</p>
+                <p
+                  class="flex items-center gap-1 text-lg font-semibold"
+                  :class="variacaoPeriodo >= 0 ? 'text-emerald-600' : 'text-destructive'"
+                >
+                  <TrendingUp v-if="variacaoPeriodo >= 0" class="size-4" />
+                  <TrendingDown v-else class="size-4" />
+                  {{ variacaoPeriodo >= 0 ? '+' : '' }}{{ variacaoPeriodo.toFixed(1) }}%
+                </p>
+              </div>
+            </div>
+            <div class="h-72 p-3 md:p-4">
+              <Line :data="dadosVendasPorDia" :options="opcoesVendasPorDia" />
+            </div>
+          </template>
         </Section>
 
         <div class="grid gap-4 lg:grid-cols-2">
-          <Section titulo="Vendas por grupo">
-            <div class="h-60 p-3 md:p-4">
-              <Bar :data="dadosVendasPorGrupo" :options="opcoesVendasPorGrupo" />
+          <Section titulo="Vendas por grupo" :descricao="`${vendasPorGrupo.length} grupos no período`">
+            <div class="overflow-x-auto">
+              <div
+                class="h-64 p-3 md:p-4"
+                :style="{ minWidth: Math.max(vendasPorGrupo.length * 110, 100) + 'px' }"
+              >
+                <Bar :data="dadosVendasPorGrupo" :options="opcoesVendasPorGrupo" />
+              </div>
             </div>
           </Section>
-          <Section titulo="Produtos mais vendidos">
-            <ul class="divide-y divide-border">
+
+          <Section
+            titulo="Produtos mais vendidos"
+            :descricao="`Mostrando ${maisVendidosVisiveis.length} de ${maisVendidosFiltrados.length}`"
+          >
+            <div class="border-b border-border p-2">
+              <div class="relative">
+                <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  v-model="buscaMaisVendidos"
+                  type="text"
+                  placeholder="Buscar produto…"
+                  class="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+            </div>
+
+            <ul class="max-h-[360px] divide-y divide-border overflow-y-auto">
               <li
-                v-for="p in maisVendidos"
-                :key="p.id"
-                class="flex items-center justify-between gap-3 px-4 py-3"
+                v-if="maisVendidosVisiveis.length === 0"
+                class="p-4 text-center text-sm text-muted-foreground"
               >
-                <span class="truncate text-sm">{{ p.nome }}</span>
-                <span class="shrink-0 text-sm font-semibold">{{ p.vendidos30d }} un.</span>
+                Nenhum produto encontrado.
+              </li>
+              <li v-for="(p, idx) in maisVendidosVisiveis" :key="p.id">
+                <button
+                  type="button"
+                  class="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-accent"
+                  @click="alternarExpandidoVendidos(p.id)"
+                >
+                  <span
+                    class="flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                    :class="
+                      idx === 0
+                        ? 'bg-amber-400/20 text-amber-600'
+                        : idx === 1
+                          ? 'bg-slate-400/20 text-slate-600'
+                          : idx === 2
+                            ? 'bg-orange-400/20 text-orange-700'
+                            : 'bg-muted text-muted-foreground'
+                    "
+                  >
+                    {{ idx + 1 }}
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="truncate text-sm">{{ p.nome }}</span>
+                      <span class="shrink-0 text-sm font-semibold">{{ p.vendidos30d }} un.</span>
+                    </div>
+                    <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        class="h-full rounded-full bg-primary"
+                        :style="{ width: `${(p.vendidos30d / maxVendidos30d) * 100}%` }"
+                      />
+                    </div>
+                  </div>
+                  <ChevronDown
+                    class="size-4 shrink-0 text-muted-foreground transition-transform"
+                    :class="expandidoVendidosId === p.id ? 'rotate-180' : ''"
+                  />
+                </button>
+
+                <div v-if="expandidoVendidosId === p.id" class="bg-surface px-4 py-3 text-xs">
+                  <div class="grid grid-cols-2 gap-2 text-muted-foreground">
+                    <p>Marca: <span class="text-foreground">{{ detalheProduto(p.id)?.marca ?? '—' }}</span></p>
+                    <p>SKU: <span class="text-foreground">{{ detalheProduto(p.id)?.sku ?? '—' }}</span></p>
+                    <p>Preço: <span class="text-foreground">{{ brl(detalheProduto(p.id)?.preco ?? 0) }}</span></p>
+                    <p>
+                      Participação:
+                      <span class="text-foreground">
+                        {{ totalVendidosListados > 0 ? Math.round((p.vendidos30d / totalVendidosListados) * 100) : 0 }}%
+                      </span>
+                    </p>
+                  </div>
+                </div>
               </li>
             </ul>
+
+            <div v-if="limiteMaisVendidos < maisVendidosFiltrados.length" class="border-t border-border p-2">
+              <Button variant="ghost" size="sm" class="w-full cursor-pointer text-xs" @click="carregarMaisVendidos">
+                Carregar mais ({{ maisVendidosFiltrados.length - limiteMaisVendidos }} restantes)
+              </Button>
+            </div>
           </Section>
         </div>
       </TabsContent>
 
-      <!-- COMPRAS -->
+      <!-- ============================= COMPRAS ============================= -->
       <TabsContent value="compras" class="space-y-4">
         <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <MetricCard
@@ -386,39 +667,101 @@ const opcoesPizza = computed(() => ({
           <MetricCard rotulo="Produtos a repor" :valor="String(baixos.length)" tom="warning" />
         </div>
 
-        <Section titulo="Compras por fornecedor">
-          <div class="h-64 p-3 md:p-4">
-            <Bar :data="dadosComprasPorFornecedor" :options="opcoesComprasPorFornecedor" />
+        <Section titulo="Compras por fornecedor" :descricao="`${comprasPorFornecedor.length} fornecedores no período`">
+          <div class="overflow-x-auto">
+            <div
+              class="h-64 p-3 md:p-4"
+              :style="{ minHeight: Math.max(comprasPorFornecedor.length * 44, 200) + 'px' }"
+            >
+              <Bar :data="dadosComprasPorFornecedor" :options="opcoesComprasPorFornecedor" />
+            </div>
           </div>
         </Section>
 
         <Section titulo="Produtos vendidos que precisam de reposição">
-          <ul class="divide-y divide-border">
-            <li
-              v-for="p in baixos"
-              :key="p.id"
-              class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3"
-            >
-              <div class="min-w-0">
-                <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-                <p class="text-meta">Vendidos: {{ p.vendidos30d }} un. · mínimo {{ p.minimo }}</p>
+          <div class="border-b border-border p-2">
+            <div class="relative">
+              <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                v-model="buscaReposicao"
+                type="text"
+                placeholder="Buscar produto…"
+                class="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          <ul class="max-h-[360px] divide-y divide-border overflow-y-auto">
+            <li v-if="baixosFiltrados.length === 0" class="p-4 text-center text-sm text-muted-foreground">
+              Nenhum produto encontrado.
+            </li>
+            <li v-for="p in baixosFiltrados" :key="p.id">
+              <button
+                type="button"
+                class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
+                @click="alternarExpandidoReposicao(p.id)"
+              >
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium">{{ p.nome }}</p>
+                  <p class="text-meta">Vendidos: {{ p.vendidos30d }} un. · mínimo {{ p.minimo }}</p>
+                </div>
+                <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : 'warning'">
+                  {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un.` }}
+                </StatusPill>
+                <ChevronDown
+                  class="size-4 shrink-0 text-muted-foreground transition-transform"
+                  :class="expandidoReposicaoId === p.id ? 'rotate-180' : ''"
+                />
+              </button>
+
+              <div v-if="expandidoReposicaoId === p.id" class="bg-surface px-4 py-3 text-xs">
+                <div class="grid grid-cols-2 gap-2 text-muted-foreground">
+                  <p>Marca: <span class="text-foreground">{{ p.marca ?? '—' }}</span></p>
+                  <p>Subgrupo: <span class="text-foreground">{{ p.subgrupo ?? '—' }}</span></p>
+                  <p>Custo unitário: <span class="text-foreground">{{ brl(p.custo ?? 0) }}</span></p>
+                  <p>
+                    Sugestão de compra:
+                    <span class="text-foreground">{{ Math.max(0, (p.minimo ?? 0) - (p.estoque ?? 0)) }} un.</span>
+                  </p>
+                </div>
               </div>
-              <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : 'warning'">
-                {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un.` }}
-              </StatusPill>
             </li>
           </ul>
         </Section>
       </TabsContent>
 
-      <!-- PRODUTOS -->
+      <!-- ============================= PRODUTOS ============================= -->
       <TabsContent value="produtos" class="space-y-4">
         <div class="grid gap-4 lg:grid-cols-2">
-          <Section titulo="Produtos por grupo">
-            <div class="h-64 p-3 md:p-4">
-              <Pie :data="dadosProdutosPorGrupo" :options="opcoesDonut" />
+          <Section titulo="Produtos por grupo" descricao="Distribuição percentual por grupo cadastrado.">
+            <div class="grid gap-4 p-3 sm:grid-cols-2 md:p-4">
+              <div class="h-64">
+                <Pie :data="dadosProdutosPorGrupo" :options="opcoesDonut" />
+              </div>
+              <ul class="max-h-64 space-y-1 overflow-y-auto">
+                <li v-for="(p, i) in produtosPorGrupo" :key="p.nome">
+                  <button
+                    type="button"
+                    class="flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-accent"
+                    :class="grupoAtivo === p.nome ? 'bg-accent' : ''"
+                    @click="alternarGrupo(p.nome)"
+                  >
+                    <span class="flex min-w-0 items-center gap-2">
+                      <span
+                        class="size-2.5 shrink-0 rounded-full"
+                        :style="{ backgroundColor: paleta[i % paleta.length] }"
+                      />
+                      <span class="truncate">{{ p.nome }}</span>
+                    </span>
+                    <span class="shrink-0 text-muted-foreground">
+                      {{ p.valor }} · {{ totalProdutosGrupo > 0 ? Math.round((p.valor / totalProdutosGrupo) * 100) : 0 }}%
+                    </span>
+                  </button>
+                </li>
+              </ul>
             </div>
           </Section>
+
           <Section titulo="Situação do estoque">
             <ul class="divide-y divide-border">
               <li
@@ -444,7 +787,7 @@ const opcoesPizza = computed(() => ({
         </div>
       </TabsContent>
 
-      <!-- PESSOAS -->
+      <!-- ============================= PESSOAS ============================= -->
       <TabsContent value="pessoas" class="space-y-4">
         <div class="grid gap-4 lg:grid-cols-2">
           <Section titulo="Pessoas por grupo">
@@ -453,8 +796,28 @@ const opcoesPizza = computed(() => ({
             </div>
           </Section>
           <Section titulo="Pessoas por gênero">
-            <div class="h-64 p-3 md:p-4">
-              <Pie :data="dadosPessoasPorGenero" :options="opcoesPizza" />
+            <div class="grid gap-4 p-3 sm:grid-cols-2 md:p-4">
+              <div class="h-64">
+                <Pie :data="dadosPessoasPorGenero" :options="opcoesPizza" />
+              </div>
+              <ul class="space-y-1">
+                <li
+                  v-for="(p, i) in porGeneroPessoas"
+                  :key="p.nome"
+                  class="flex items-center justify-between gap-2 rounded-md px-2 py-2 text-sm"
+                >
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span
+                      class="size-2.5 shrink-0 rounded-full"
+                      :style="{ backgroundColor: paleta[i % paleta.length] }"
+                    />
+                    <span class="truncate">{{ p.nome }}</span>
+                  </span>
+                  <span class="shrink-0 text-muted-foreground">
+                    {{ p.valor }} · {{ totalPessoasGenero > 0 ? Math.round((p.valor / totalPessoasGenero) * 100) : 0 }}%
+                  </span>
+                </li>
+              </ul>
             </div>
           </Section>
         </div>
