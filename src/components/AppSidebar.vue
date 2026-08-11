@@ -36,6 +36,7 @@ const secoes = [
       { titulo: 'Subgrupos', url: '/subgrupos', icone: Layers },
       { titulo: 'Marcas', url: '/marcas', icone: Tags },
       { titulo: 'Fornecedores', url: '/fornecedores', icone: Truck },
+      { titulo: 'Usuários', url: '/usuarios', icone: Users },
     ],
   },
   {
