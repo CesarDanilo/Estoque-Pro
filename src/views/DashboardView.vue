@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Line, Bar } from 'vue-chartjs'
 import {
@@ -18,6 +18,7 @@ import Section from '@/components/page-shell/Section.vue'
 import MetricCard from '@/components/ui-kit/MetricCard.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import { Button } from '@/components/ui/button'
+import NewProduct from '@/components/NewProduct.vue'
 import {
   brl,
   compras,
@@ -58,6 +59,22 @@ const semEstoque = computed(() => produtos.filter((p) => nivelEstoque(p) === 'se
 const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0 && p.status === 'ativo'))
 
 const atencao = computed(() => [...semEstoque.value, ...baixos.value])
+
+// estado do modal de edição de produto, aberto a partir de "Precisa da sua atenção"
+const modalProdutoAberto = ref(false)
+const produtoSelecionado = ref(null)
+
+function abrirEdicaoProduto(produto) {
+  produtoSelecionado.value = produto
+  modalProdutoAberto.value = true
+}
+
+function onProdutoSalvo(dadosAtualizados) {
+  // Atualiza os campos do produto na lista local (mock).
+  // Se os dados vierem de uma API depois, troque por um refetch aqui.
+  const alvo = produtos.find((p) => p.id === produtoSelecionado.value?.id)
+  if (alvo) Object.assign(alvo, dadosAtualizados)
+}
 
 // ---------- Atividades recentes: todas as movimentações, mais recentes primeiro ----------
 // mantém o id original de cada entidade (venda/compra) para poder linkar pra tela certa
@@ -257,11 +274,14 @@ const chartOptionsGrupo = {
         </Button>
       </template>
 
-      <ul class="divide-y divide-border">
+      <!-- max-h + overflow-y-auto garante rolagem quando a lista tiver muitos produtos -->
+      <ul class="max-h-72 divide-y divide-border overflow-y-auto">
         <li v-for="p in atencao" :key="p.id">
-          <RouterLink
-            :to="`/produtos/${p.id}`"
-            class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 md:px-5"
+          <!-- 🔴 AQUI — cursor-pointer adicionado para indicar que o item é clicável -->
+          <button
+            type="button"
+            class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
+            @click="abrirEdicaoProduto(p)"
           >
             <div class="min-w-0">
               <p class="truncate text-sm font-medium">{{ p.nome }}</p>
@@ -272,7 +292,7 @@ const chartOptionsGrupo = {
             <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : 'warning'">
               {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un. restantes` }}
             </StatusPill>
-          </RouterLink>
+          </button>
         </li>
       </ul>
     </Section>
@@ -362,4 +382,11 @@ const chartOptionsGrupo = {
       </div>
     </Section>
   </div>
+
+  <!-- modal de edição, aberto ao clicar em um item de "Precisa da sua atenção" -->
+  <NewProduct
+    v-model:open="modalProdutoAberto"
+    :produto="produtoSelecionado"
+    @salvo="onProdutoSalvo"
+  />
 </template>
