@@ -182,24 +182,24 @@ async function salvar() {
 
 <template>
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
-    <DialogContent class="max-h-[90vh] max-w-2xl overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle class="text-lg font-semibold tracking-tight">Nova pessoa</DialogTitle>
-        <DialogDescription class="text-xs text-muted-foreground">
+    <DialogContent class="w-[950px] max-w-[95vw] overflow-y-auto p-8 sm:max-w-[950px]">
+      <DialogHeader class="space-y-1">
+        <DialogTitle class="text-xl font-semibold tracking-tight">Nova pessoa</DialogTitle>
+        <DialogDescription class="text-sm text-muted-foreground">
           Os campos marcados com <span class="text-destructive">*</span> são obrigatórios.
         </DialogDescription>
       </DialogHeader>
 
-      <form class="space-y-6" @submit.prevent="salvar">
+      <form class="space-y-7 pt-1" @submit.prevent="salvar">
         <!-- Identificação -->
         <section class="space-y-4">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Identificação
           </h3>
 
-          <div class="grid gap-4 md:grid-cols-2">
-            <div class="md:col-span-2">
-              <label for="nome" class="mb-1 block text-sm font-medium text-foreground">
+          <div class="grid grid-cols-1 gap-x-6 gap-y-4">
+            <div>
+              <label for="nome" class="mb-1.5 block text-sm font-medium text-foreground">
                 Nome completo ou razão social <span class="text-destructive">*</span>
               </label>
               <div class="relative">
@@ -221,84 +221,84 @@ async function salvar() {
               <p v-if="erros.nome" class="mt-1 text-xs text-destructive">{{ erros.nome }}</p>
             </div>
 
-            <div>
-              <label for="documento" class="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
-                <span
-                  class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors"
-                  :class="documentoBadge.classe"
-                >
-                  {{ documentoBadge.texto }}
-                </span><span class="text-destructive">*</span>
-              </label>
-              <input
-                id="documento"
-                :value="documento.formatted.value"
-                :maxlength="18"
-                placeholder="000.000.000-00"
-                class="h-10 w-full cursor-text rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                :aria-invalid="!!erros.documento"
-                @input="documento.onInput"
-              />
-              <p v-if="erros.documento" class="mt-1 text-xs text-destructive">{{ erros.documento }}</p>
-              <p v-else class="mt-1 text-xs text-muted-foreground">
-                Aceita CPF (pessoa física) ou CNPJ (pessoa jurídica) — o tipo é identificado automaticamente.
-              </p>
-            </div>
+            <div class="grid grid-cols-4 gap-x-6">
+              <div>
+                <label for="documento" class="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span
+                    class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors"
+                    :class="documentoBadge.classe"
+                  >
+                    {{ documentoBadge.texto }}
+                  </span><span class="text-destructive">*</span>
+                </label>
+                <input
+                  id="documento"
+                  :value="documento.formatted.value"
+                  :maxlength="18"
+                  placeholder="000.000.000-00"
+                  class="h-10 w-full cursor-text rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  :aria-invalid="!!erros.documento"
+                  @input="documento.onInput"
+                />
+                <p v-if="erros.documento" class="mt-1 text-xs text-destructive">{{ erros.documento }}</p>
+                <p v-else class="mt-1 text-xs text-muted-foreground">CPF ou CNPJ, automático.</p>
+              </div>
 
-            <div>
-              <label for="grupo" class="mb-1 block text-sm font-medium text-foreground">Grupo</label>
-              <Select v-model="form.grupo">
-                <SelectTrigger id="grupo" class="h-10 w-full cursor-pointer">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Cliente" class="cursor-pointer">Cliente</SelectItem>
-                  <SelectItem value="Fornecedor" class="cursor-pointer">Fornecedor</SelectItem>
-                  <SelectItem value="Colaborador" class="cursor-pointer">Colaborador</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              <div>
+                <label for="grupo" class="mb-1.5 block text-sm font-medium text-foreground">Grupo</label>
+                <Select v-model="form.grupo">
+                  <SelectTrigger id="grupo" class="h-10 w-full cursor-pointer">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Cliente" class="cursor-pointer">Cliente</SelectItem>
+                    <SelectItem value="Fornecedor" class="cursor-pointer">Fornecedor</SelectItem>
+                    <SelectItem value="Colaborador" class="cursor-pointer">Colaborador</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div>
-              <label for="genero" class="mb-1 block text-sm font-medium text-foreground">Gênero</label>
-              <Select v-model="form.genero">
-                <SelectTrigger id="genero" class="h-10 w-full cursor-pointer">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Feminino" class="cursor-pointer">Feminino</SelectItem>
-                  <SelectItem value="Masculino" class="cursor-pointer">Masculino</SelectItem>
-                  <SelectItem value="Não informado" class="cursor-pointer">Prefiro não informar</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              <div>
+                <label for="genero" class="mb-1.5 block text-sm font-medium text-foreground">Gênero</label>
+                <Select v-model="form.genero">
+                  <SelectTrigger id="genero" class="h-10 w-full cursor-pointer">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Feminino" class="cursor-pointer">Feminino</SelectItem>
+                    <SelectItem value="Masculino" class="cursor-pointer">Masculino</SelectItem>
+                    <SelectItem value="Não informado" class="cursor-pointer">Prefiro não informar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div>
-              <label for="nascimento" class="mb-1 block text-sm font-medium text-foreground">
-                Data de nascimento
-              </label>
-              <Input
-                id="nascimento"
-                v-model="form.nascimento"
-                type="date"
-                :max="hoje"
-                class="h-10 cursor-text"
-                :aria-invalid="!!erros.nascimento"
-              />
-              <p v-if="erros.nascimento" class="mt-1 text-xs text-destructive">{{ erros.nascimento }}</p>
+              <div>
+                <label for="nascimento" class="mb-1.5 block text-sm font-medium text-foreground">
+                  Nascimento
+                </label>
+                <Input
+                  id="nascimento"
+                  v-model="form.nascimento"
+                  type="date"
+                  :max="hoje"
+                  class="h-10 cursor-text"
+                  :aria-invalid="!!erros.nascimento"
+                />
+                <p v-if="erros.nascimento" class="mt-1 text-xs text-destructive">{{ erros.nascimento }}</p>
+              </div>
             </div>
           </div>
         </section>
 
-        <!-- Contato -->
-        <section class="space-y-4 border-t border-border pt-5">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Contato
+        <!-- Contato e endereço -->
+        <section class="space-y-4 border-t border-border pt-6">
+          <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Contato e endereço
           </h3>
 
-          <div class="grid gap-4 md:grid-cols-5">
-            <div class="md:col-span-2">
-              <label for="telefone" class="mb-1 block text-sm font-medium text-foreground">
+          <div class="grid grid-cols-5 gap-x-6 gap-y-4">
+            <div class="col-span-2">
+              <label for="telefone" class="mb-1.5 block text-sm font-medium text-foreground">
                 Telefone <span class="text-destructive">*</span>
               </label>
               <input
@@ -313,8 +313,8 @@ async function salvar() {
               <p v-if="erros.telefone" class="mt-1 text-xs text-destructive">{{ erros.telefone }}</p>
             </div>
 
-            <div class="md:col-span-3">
-              <label for="email" class="mb-1 block text-sm font-medium text-foreground">E-mail</label>
+            <div class="col-span-3">
+              <label for="email" class="mb-1.5 block text-sm font-medium text-foreground">E-mail</label>
               <div class="relative">
                 <input
                   id="email"
@@ -340,18 +340,9 @@ async function salvar() {
                 {{ erros.email || 'Informe um e-mail válido.' }}
               </p>
             </div>
-          </div>
-        </section>
 
-        <!-- Endereço -->
-        <section class="space-y-4 border-t border-border pt-5">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Endereço
-          </h3>
-
-          <div class="grid gap-4 md:grid-cols-3">
             <div>
-              <label for="cep" class="mb-1 block text-sm font-medium text-foreground">CEP</label>
+              <label for="cep" class="mb-1.5 block text-sm font-medium text-foreground">CEP</label>
               <input
                 id="cep"
                 :value="cep.formatted.value"
@@ -362,23 +353,23 @@ async function salvar() {
               />
             </div>
             <div>
-              <label for="cidade" class="mb-1 block text-sm font-medium text-foreground">Cidade</label>
+              <label for="cidade" class="mb-1.5 block text-sm font-medium text-foreground">Cidade</label>
               <Input id="cidade" v-model="form.cidade" placeholder="Campo Grande" :maxlength="80" class="h-10 cursor-text" />
             </div>
-            <div>
-              <label for="endereco" class="mb-1 block text-sm font-medium text-foreground">Endereço</label>
+            <div class="col-span-3">
+              <label for="endereco" class="mb-1.5 block text-sm font-medium text-foreground">Endereço</label>
               <Input id="endereco" v-model="form.endereco" placeholder="Rua, número, bairro" :maxlength="160" class="h-10 cursor-text" />
             </div>
           </div>
         </section>
 
         <!-- Situação -->
-        <section class="space-y-4 border-t border-border pt-5">
-          <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <section class="space-y-4 border-t border-border pt-6">
+          <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Situação
           </h3>
 
-          <div class="flex items-center justify-between gap-3 rounded-md border border-input px-3 py-2.5">
+          <div class="flex items-center justify-between gap-3 rounded-md border border-input px-4 py-3">
             <div class="space-y-0.5">
               <label for="ativo" class="text-sm font-medium text-foreground">Pessoa ativa</label>
               <p class="text-xs text-muted-foreground">Inativas não aparecem em novas vendas.</p>
@@ -391,7 +382,7 @@ async function salvar() {
           </div>
         </section>
 
-        <DialogFooter class="pt-2">
+        <DialogFooter class="pt-3">
           <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">Cancelar</Button>
           <Button
             type="submit"
