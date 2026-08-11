@@ -58,9 +58,15 @@ const form = reactive({
   observacoes: '',
 })
 
-// data máxima permitida no input de nascimento = hoje (bloqueia datas futuras
-// já na escolha do calendário nativo, antes mesmo de validar no submit)
-const hoje = new Date().toISOString().slice(0, 10)
+function dataLocalHoje() {
+  const agora = new Date()
+  const ano = agora.getFullYear()
+  const mes = String(agora.getMonth() + 1).padStart(2, '0')
+  const dia = String(agora.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
+const hoje = dataLocalHoje()
 
 const emailModel = computed({
   get: () => email.value,
@@ -92,6 +98,36 @@ watch(
   (valor) => {
     if (erros.nascimento && (!valor || valor <= hoje)) {
       delete erros.nascimento
+    }
+  },
+)
+
+// remove o erro de e-mail assim que o usuário preenche
+watch(
+  () => email.value,
+  (valor) => {
+    if (erros.email && valor) {
+      delete erros.email
+    }
+  },
+)
+
+// remove o erro de endereço assim que o usuário preenche
+watch(
+  () => form.endereco,
+  (valor) => {
+    if (erros.endereco && valor) {
+      delete erros.endereco
+    }
+  },
+)
+
+// remove o erro de cidade assim que o usuário preenche
+watch(
+  () => form.cidade,
+  (valor) => {
+    if (erros.cidade && valor) {
+      delete erros.cidade
     }
   },
 )
@@ -141,22 +177,40 @@ function validar() {
     resultado.error.issues.forEach((issue) => {
       erros[issue.path[0]] = issue.message
     })
-    return null
   }
 
   if (documento.raw.value.length > 0 && !documento.isValid.value) {
     erros.documento = `${documento.tipo.value} inválido.`
-    return null
   }
 
   // ninguém nasce no futuro — bloqueio de segurança além do `max` do input,
   // cobrindo digitação manual ou colagem de data
   if (form.nascimento && form.nascimento > hoje) {
     erros.nascimento = 'Data de nascimento não pode ser no futuro.'
+  }
+
+  // e-mail agora é obrigatório
+  if (!email.value.trim()) {
+    erros.email = 'Informe o e-mail.'
+  } else if (email.status === 'invalid') {
+    erros.email = 'Informe um e-mail válido.'
+  }
+
+  // endereço agora é obrigatório
+  if (!form.endereco.trim()) {
+    erros.endereco = 'Informe o endereço.'
+  }
+
+  // cidade agora é obrigatória
+  if (!form.cidade.trim()) {
+    erros.cidade = 'Informe a cidade.'
+  }
+
+  if (Object.keys(erros).length > 0) {
     return null
   }
 
-  return resultado.data
+  return resultado.data ?? payload
 }
 
 async function salvar() {
@@ -314,7 +368,9 @@ async function salvar() {
             </div>
 
             <div class="col-span-3">
-              <label for="email" class="mb-1.5 block text-sm font-medium text-foreground">E-mail</label>
+              <label for="email" class="mb-1.5 block text-sm font-medium text-foreground">
+                E-mail <span class="text-destructive">*</span>
+              </label>
               <div class="relative">
                 <input
                   id="email"
@@ -323,9 +379,10 @@ async function salvar() {
                   type="email"
                   placeholder="nome@email.com"
                   class="h-10 w-full cursor-text rounded-md border bg-transparent px-3 pr-16 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  :aria-invalid="email.status === 'invalid' || !!erros.email"
                   :class="{
                     'border-destructive': email.status === 'invalid' || erros.email,
-                    'border-emerald-500': email.status === 'valid',
+                    'border-emerald-500': email.status === 'valid' && !erros.email,
                     'border-input': email.status === 'idle' && !erros.email,
                   }"
                 />
@@ -353,12 +410,32 @@ async function salvar() {
               />
             </div>
             <div>
-              <label for="cidade" class="mb-1.5 block text-sm font-medium text-foreground">Cidade</label>
-              <Input id="cidade" v-model="form.cidade" placeholder="Campo Grande" :maxlength="80" class="h-10 cursor-text" />
+              <label for="cidade" class="mb-1.5 block text-sm font-medium text-foreground">
+                Cidade <span class="text-destructive">*</span>
+              </label>
+              <Input
+                id="cidade"
+                v-model="form.cidade"
+                placeholder="Campo Grande"
+                :maxlength="80"
+                class="h-10 cursor-text"
+                :aria-invalid="!!erros.cidade"
+              />
+              <p v-if="erros.cidade" class="mt-1 text-xs text-destructive">{{ erros.cidade }}</p>
             </div>
             <div class="col-span-3">
-              <label for="endereco" class="mb-1.5 block text-sm font-medium text-foreground">Endereço</label>
-              <Input id="endereco" v-model="form.endereco" placeholder="Rua, número, bairro" :maxlength="160" class="h-10 cursor-text" />
+              <label for="endereco" class="mb-1.5 block text-sm font-medium text-foreground">
+                Endereço <span class="text-destructive">*</span>
+              </label>
+              <Input
+                id="endereco"
+                v-model="form.endereco"
+                placeholder="Rua, número, bairro"
+                :maxlength="160"
+                class="h-10 cursor-text"
+                :aria-invalid="!!erros.endereco"
+              />
+              <p v-if="erros.endereco" class="mt-1 text-xs text-destructive">{{ erros.endereco }}</p>
             </div>
           </div>
         </section>
