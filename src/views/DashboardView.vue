@@ -361,7 +361,7 @@ const chartOptionsGrupo = {
             >
               <span
                 class="grid size-7 place-items-center rounded-lg"
-                :class="a.tipo === 'saida' ? 'bg-primary/15 text-primary' : 'bg-blue-500/15 text-blue-600'"
+                :class="a.tipo === 'saida' ? 'bg-primary/15 text-primary' : 'bg-emerald-500/15 text-emerald-600'"
               >
                 <ArrowUpRight v-if="a.tipo === 'saida'" class="size-4" aria-hidden="true" />
                 <ArrowDownRight v-else class="size-4" aria-hidden="true" />
