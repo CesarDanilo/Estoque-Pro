@@ -47,6 +47,11 @@ const router = createRouter({
       path: '/compras/nova',
       name: 'compras-nova',
       component: () => import('@/views/NewPurchaseView.vue'),
+    },
+    {
+      path: '/relatorios',
+      name: 'relatorios',
+      component: () => import('@/views/ReportsView.vue'),
     }
 
 
