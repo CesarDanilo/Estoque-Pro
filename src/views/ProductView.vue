@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
 import { MoreHorizontal, Package, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
@@ -10,6 +9,7 @@ import TableSkeleton from '@/components/page-shell/TableSkeleton.vue'
 import MetricCard from '@/components/ui-kit/MetricCard.vue'
 import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
+import NewProduct from '@/components/NewProduct.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 
 import { Button } from '@/components/ui/button'
@@ -48,6 +48,9 @@ const estoque = ref('todos')
 const pagina = ref(1)
 const carregando = ref(false)
 const excluir = ref(null)
+
+const modalAberto = ref(false)
+const produtoEditando = ref(null)
 
 const { sucesso, info } = useFeedback()
 
@@ -98,8 +101,19 @@ function onGrupoChange(v) {
   resetPag()
 }
 
-function abrirEdicao() {
-  info('Abrindo produto', 'Redirecionando para o cadastro do produto…')
+function abrirNovo() {
+  produtoEditando.value = null
+  modalAberto.value = true
+}
+
+function abrirEdicao(p) {
+  produtoEditando.value = p
+  modalAberto.value = true
+}
+
+function onProdutoSalvo(dados) {
+  // Dados mockados: aqui é onde a lista seria atualizada com o retorno da API.
+  info('Lista atualizada', 'Assim que a API estiver pronta, a lista recarrega automaticamente.')
 }
 
 function confirmarExclusao() {
@@ -115,10 +129,8 @@ function confirmarExclusao() {
     :trilha="[{ titulo: 'Gestão' }, { titulo: 'Produtos' }]"
   >
     <template #acoes>
-      <Button as-child>
-        <RouterLink to="/produtos/novo">
-          <Plus class="size-4" /> Novo produto
-        </RouterLink>
+      <Button class="cursor-pointer" @click="abrirNovo">
+        <Plus class="size-4" /> Novo produto
       </Button>
     </template>
   </PageHeader>
@@ -220,9 +232,7 @@ function confirmarExclusao() {
         descricao="Ajuste os filtros ou cadastre um novo produto para começar a controlar o estoque."
       >
         <template #acao>
-          <Button as-child class="cursor-pointer">
-            <RouterLink to="/produtos/novo">Cadastrar produto</RouterLink>
-          </Button>
+          <Button class="cursor-pointer" @click="abrirNovo">Cadastrar produto</Button>
         </template>
       </EmptyState>
 
@@ -286,7 +296,7 @@ function confirmarExclusao() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao">
+                      <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao(p)">
                         <Pencil class="size-4" /> Editar
                       </DropdownMenuItem>
                       <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = p">
@@ -328,6 +338,8 @@ function confirmarExclusao() {
       </template>
     </Section>
   </div>
+
+  <NewProduct v-model:open="modalAberto" :produto="produtoEditando" @salvo="onProdutoSalvo" />
 
   <AlertDialog :open="!!excluir" @update:open="(o) => !o && (excluir = null)">
     <AlertDialogContent>
