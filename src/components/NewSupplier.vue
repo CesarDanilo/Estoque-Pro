@@ -26,9 +26,20 @@ const emit = defineEmits(['update:open', 'salvo'])
 
 const { sucesso, erro, info } = useFeedback()
 
+// ---- Limites Máximos de Caracteres ----
 const NOME_MAX = 100
 const NOME_FANTASIA_MAX = 100
+const DOCUMENTO_MAX = 18 // CNPJ Formatado: 00.000.000/0000-00
+const IE_MAX = 20
 const CONTATO_MAX = 60
+const TELEFONE_MAX = 15 // Formatado: (00) 00000-0000
+const EMAIL_MAX = 100
+const CEP_MAX = 9 // Formatado: 00000-000
+const LOGRADOURO_MAX = 120
+const NUMERO_MAX = 15
+const COMPLEMENTO_MAX = 50
+const BAIRRO_MAX = 60
+const CIDADE_MAX = 60
 const OBS_MAX = 500
 
 const salvando = ref(false)
@@ -38,12 +49,8 @@ const erros = reactive({})
 const form = reactive({
   nome: '',
   nomeFantasia: '',
-  documento: '',
-  ie: '',
   contato: '',
-  telefone: '',
   email: '',
-  cep: '',
   logradouro: '',
   numero: '',
   complemento: '',
@@ -54,40 +61,25 @@ const form = reactive({
   ativo: true,
 })
 
-const editando = computed(() => !!props.fornecedor)
+// ---- Campos numéricos (documento, IE, telefone, CEP) ----
+// Cada campo guarda só os DÍGITOS digitados (raw). O que aparece na tela é
+// sempre a versão formatada (formatted), derivada do raw.
+//
+// IMPORTANTE: além de atualizar o estado reativo, cada handler de @input
+// também escreve `e.target.value` diretamente. Isso é necessário porque,
+// quando o texto filtrado resulta no MESMO valor que já estava lá (ex.: já
+// era "123", o usuário digita uma letra, ela é removida e sobra "123" de
+// novo), o Vue não detecta mudança no estado e não re-renderiza o DOM —
+// então a letra ficaria visível na tela mesmo com o estado interno correto.
+// Forçar `e.target.value` garante que o campo NUNCA mostre um caractere
+// inválido, independentemente de o Vue considerar o valor "igual" ou não.
+const documentoRaw = ref('')
+const ieRaw = ref('')
+const telefoneRaw = ref('')
+const cepRaw = ref('')
 
-// ---- Models Computados ----
-const nomeModel = computed({
-  get: () => form.nome,
-  set: (v) => {
-    form.nome = (v ?? '').slice(0, NOME_MAX)
-  },
-})
-
-const nomeFantasiaModel = computed({
-  get: () => form.nomeFantasia,
-  set: (v) => {
-    form.nomeFantasia = (v ?? '').slice(0, NOME_FANTASIA_MAX)
-  },
-})
-
-const contatoModel = computed({
-  get: () => form.contato,
-  set: (v) => {
-    form.contato = (v ?? '').slice(0, CONTATO_MAX)
-  },
-})
-
-const obsModel = computed({
-  get: () => form.observacoes,
-  set: (v) => {
-    form.observacoes = (v ?? '').slice(0, OBS_MAX)
-  },
-})
-
-// ---- Máscaras e Formatações ----
 function aplicarMascaraDocumento(v) {
-  const nums = v.replace(/\D/g, '').slice(0, 14)
+  const nums = (v ?? '').replace(/\D/g, '').slice(0, 14)
   if (nums.length <= 11) {
     return nums
       .replace(/(\d{3})(\d)/, '$1.$2')
@@ -102,7 +94,7 @@ function aplicarMascaraDocumento(v) {
 }
 
 function aplicarMascaraTelefone(v) {
-  const nums = v.replace(/\D/g, '').slice(0, 11)
+  const nums = (v ?? '').replace(/\D/g, '').slice(0, 11)
   if (nums.length <= 10) {
     return nums
       .replace(/^(\d{2})(\d)/, '($1) $2')
@@ -114,38 +106,118 @@ function aplicarMascaraTelefone(v) {
 }
 
 function aplicarMascaraCep(v) {
-  const nums = v.replace(/\D/g, '').slice(0, 8)
+  const nums = (v ?? '').replace(/\D/g, '').slice(0, 8)
   return nums.replace(/^(\d{5})(\d)/, '$1-$2')
 }
 
-// Watchers de formatação
-watch(
-  () => form.documento,
-  (v) => {
-    form.documento = aplicarMascaraDocumento(v)
-    if (erros.documento && v.replace(/\D/g, '').length >= 11) delete erros.documento
-  },
-)
+const documentoFormatted = computed(() => aplicarMascaraDocumento(documentoRaw.value))
+const telefoneFormatted = computed(() => aplicarMascaraTelefone(telefoneRaw.value))
+const cepFormatted = computed(() => aplicarMascaraCep(cepRaw.value))
+// IE não tem máscara visual, mas também só aceita dígito
+const ieFormatted = computed(() => ieRaw.value)
 
-watch(
-  () => form.telefone,
-  (v) => {
-    form.telefone = aplicarMascaraTelefone(v)
-    if (erros.telefone && v.replace(/\D/g, '').length >= 10) delete erros.telefone
-  },
-)
+function onInputDocumento(e) {
+  const digitos = (e.target.value ?? '').replace(/\D/g, '').slice(0, 14)
+  documentoRaw.value = digitos
+  e.target.value = aplicarMascaraDocumento(digitos) // força o DOM a refletir o valor limpo
+  if (erros.documento && digitos.length >= 11) delete erros.documento
+}
 
-watch(
-  () => form.cep,
-  (v) => {
-    const cepFormatado = aplicarMascaraCep(v)
-    form.cep = cepFormatado
-    const limpo = cepFormatado.replace(/\D/g, '')
-    if (limpo.length === 8) {
-      buscarEnderecoPorCep(limpo)
-    }
-  },
-)
+function onInputIe(e) {
+  const digitos = (e.target.value ?? '').replace(/\D/g, '').slice(0, IE_MAX)
+  ieRaw.value = digitos
+  e.target.value = digitos // força o DOM a refletir o valor limpo
+}
+
+function onInputTelefone(e) {
+  const digitos = (e.target.value ?? '').replace(/\D/g, '').slice(0, 11)
+  telefoneRaw.value = digitos
+  e.target.value = aplicarMascaraTelefone(digitos) // força o DOM a refletir o valor limpo
+  if (erros.telefone && digitos.length >= 10) delete erros.telefone
+}
+
+function onInputCep(e) {
+  const digitos = (e.target.value ?? '').replace(/\D/g, '').slice(0, 8)
+  cepRaw.value = digitos
+  e.target.value = aplicarMascaraCep(digitos) // força o DOM a refletir o valor limpo
+  if (digitos.length === 8) {
+    buscarEnderecoPorCep(digitos)
+  }
+}
+
+const editando = computed(() => !!props.fornecedor)
+
+// ---- Validação para ativar o botão de Salvar ----
+const formPreenchido = computed(() => {
+  return (
+    form.nome.trim() !== '' ||
+    form.nomeFantasia.trim() !== '' ||
+    documentoRaw.value !== '' ||
+    ieRaw.value !== '' ||
+    form.contato.trim() !== '' ||
+    telefoneRaw.value !== '' ||
+    form.email.trim() !== '' ||
+    cepRaw.value !== '' ||
+    form.logradouro.trim() !== '' ||
+    form.numero.trim() !== '' ||
+    form.complemento.trim() !== '' ||
+    form.bairro.trim() !== '' ||
+    form.cidade.trim() !== '' ||
+    form.uf.trim() !== '' ||
+    form.observacoes.trim() !== ''
+  )
+})
+
+// ---- Models Computados com Limites e Trims (campos de texto) ----
+const nomeModel = computed({
+  get: () => form.nome,
+  set: (v) => { form.nome = (v ?? '').slice(0, NOME_MAX) },
+})
+
+const nomeFantasiaModel = computed({
+  get: () => form.nomeFantasia,
+  set: (v) => { form.nomeFantasia = (v ?? '').slice(0, NOME_FANTASIA_MAX) },
+})
+
+const contatoModel = computed({
+  get: () => form.contato,
+  set: (v) => { form.contato = (v ?? '').slice(0, CONTATO_MAX) },
+})
+
+const emailModel = computed({
+  get: () => form.email,
+  set: (v) => { form.email = (v ?? '').trim().slice(0, EMAIL_MAX) },
+})
+
+const logradouroModel = computed({
+  get: () => form.logradouro,
+  set: (v) => { form.logradouro = (v ?? '').slice(0, LOGRADOURO_MAX) },
+})
+
+const numeroModel = computed({
+  get: () => form.numero,
+  set: (v) => { form.numero = (v ?? '').slice(0, NUMERO_MAX) },
+})
+
+const complementoModel = computed({
+  get: () => form.complemento,
+  set: (v) => { form.complemento = (v ?? '').slice(0, COMPLEMENTO_MAX) },
+})
+
+const bairroModel = computed({
+  get: () => form.bairro,
+  set: (v) => { form.bairro = (v ?? '').slice(0, BAIRRO_MAX) },
+})
+
+const cidadeModel = computed({
+  get: () => form.cidade,
+  set: (v) => { form.cidade = (v ?? '').slice(0, CIDADE_MAX) },
+})
+
+const obsModel = computed({
+  get: () => form.observacoes,
+  set: (v) => { form.observacoes = (v ?? '').slice(0, OBS_MAX) },
+})
 
 watch(
   () => form.nome,
@@ -161,7 +233,7 @@ watch(
   },
 )
 
-// ---- Consulta CEP ----
+// ---- Consulta CEP via ViaCEP ----
 async function buscarEnderecoPorCep(cepLimpo) {
   buscandoCep.value = true
   try {
@@ -173,10 +245,10 @@ async function buscarEnderecoPorCep(cepLimpo) {
       return
     }
 
-    form.logradouro = data.logradouro ?? ''
-    form.bairro = data.bairro ?? ''
-    form.cidade = data.localidade ?? ''
-    form.uf = data.uf ?? ''
+    form.logradouro = (data.logradouro ?? '').slice(0, LOGRADOURO_MAX)
+    form.bairro = (data.bairro ?? '').slice(0, BAIRRO_MAX)
+    form.cidade = (data.localidade ?? '').slice(0, CIDADE_MAX)
+    form.uf = (data.uf ?? '').toUpperCase().slice(0, 2)
     info('Endereço preenchido automaticamente.')
   } catch {
     erro('Não foi possível buscar o CEP automaticamente.')
@@ -201,12 +273,8 @@ function preencherFormulario() {
   if (f) {
     form.nome = f.nome ?? ''
     form.nomeFantasia = f.nomeFantasia ?? ''
-    form.documento = f.documento ?? ''
-    form.ie = f.ie ?? ''
     form.contato = f.contato ?? ''
-    form.telefone = f.telefone ?? ''
     form.email = f.email ?? ''
-    form.cep = f.cep ?? ''
     form.logradouro = f.logradouro ?? ''
     form.numero = f.numero ?? ''
     form.complemento = f.complemento ?? ''
@@ -215,15 +283,16 @@ function preencherFormulario() {
     form.uf = f.uf ?? ''
     form.observacoes = f.observacoes ?? ''
     form.ativo = f.status ? f.status === 'ativo' : true
+
+    documentoRaw.value = (f.documento ?? '').replace(/\D/g, '').slice(0, 14)
+    ieRaw.value = (f.ie ?? '').replace(/\D/g, '').slice(0, IE_MAX)
+    telefoneRaw.value = (f.telefone ?? '').replace(/\D/g, '').slice(0, 11)
+    cepRaw.value = (f.cep ?? '').replace(/\D/g, '').slice(0, 8)
   } else {
     form.nome = ''
     form.nomeFantasia = ''
-    form.documento = ''
-    form.ie = ''
     form.contato = ''
-    form.telefone = ''
     form.email = ''
-    form.cep = ''
     form.logradouro = ''
     form.numero = ''
     form.complemento = ''
@@ -232,6 +301,11 @@ function preencherFormulario() {
     form.uf = ''
     form.observacoes = ''
     form.ativo = true
+
+    documentoRaw.value = ''
+    ieRaw.value = ''
+    telefoneRaw.value = ''
+    cepRaw.value = ''
   }
 }
 
@@ -246,17 +320,15 @@ function validar() {
     erros.nome = 'Informe a razão social ou nome do fornecedor.'
   }
 
-  const docLimpo = form.documento.replace(/\D/g, '')
-  if (!docLimpo) {
+  if (!documentoRaw.value) {
     erros.documento = 'Informe o CNPJ ou CPF.'
-  } else if (docLimpo.length !== 11 && docLimpo.length !== 14) {
+  } else if (documentoRaw.value.length !== 11 && documentoRaw.value.length !== 14) {
     erros.documento = 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.'
   }
 
-  const telLimpo = form.telefone.replace(/\D/g, '')
-  if (!telLimpo) {
+  if (!telefoneRaw.value) {
     erros.telefone = 'Informe um telefone ou WhatsApp.'
-  } else if (telLimpo.length < 10) {
+  } else if (telefoneRaw.value.length < 10) {
     erros.telefone = 'Telefone inválido.'
   }
 
@@ -268,7 +340,7 @@ function validar() {
 }
 
 function salvar() {
-  if (salvando.value) return
+  if (salvando.value || !formPreenchido.value) return
 
   if (!validar()) {
     erro('Confira os campos destacados antes de salvar.')
@@ -286,6 +358,10 @@ function salvar() {
     )
     emit('salvo', {
       ...form,
+      documento: documentoFormatted.value,
+      ie: ieRaw.value,
+      telefone: telefoneFormatted.value,
+      cep: cepFormatted.value,
       status: form.ativo ? 'ativo' : 'inativo',
     })
     emit('update:open', false)
@@ -340,27 +416,49 @@ function salvar() {
               <label for="fornecedor-fantasia" class="mb-1 block text-xs font-medium text-foreground">
                 Nome Fantasia
               </label>
-              <Input
-                id="fornecedor-fantasia"
-                v-model="nomeFantasiaModel"
-                placeholder="Ex.: Distribuidora Silva"
-                :maxlength="NOME_FANTASIA_MAX"
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-fantasia"
+                  v-model="nomeFantasiaModel"
+                  placeholder="Ex.: Distribuidora Silva"
+                  :maxlength="NOME_FANTASIA_MAX"
+                  class="h-9 text-xs cursor-text pr-12"
+                />
+                <span
+                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.nomeFantasia.length >= NOME_FANTASIA_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.nomeFantasia.length }}/{{ NOME_FANTASIA_MAX }}
+                </span>
+              </div>
             </div>
 
             <div class="col-span-1 sm:col-span-1 md:col-span-2 lg:col-span-2">
               <label for="fornecedor-documento" class="mb-1 block text-xs font-medium text-foreground">
                 CNPJ / CPF <span class="text-destructive">*</span>
               </label>
-              <Input
-                id="fornecedor-documento"
-                v-model="form.documento"
-                placeholder="00.000.000/0000-00"
-                class="h-9 text-xs cursor-text"
-                :aria-invalid="!!erros.documento"
-                :class="{ 'border-destructive focus-visible:ring-destructive': erros.documento }"
-              />
+              <div class="relative">
+                <input
+                  id="fornecedor-documento"
+                  :value="documentoFormatted"
+                  :maxlength="DOCUMENTO_MAX"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="00.000.000/0000-00"
+                  class="h-9 w-full cursor-text rounded-md border border-input bg-transparent px-3 pr-12 text-xs outline-none focus:ring-2 focus:ring-ring"
+                  :aria-invalid="!!erros.documento"
+                  :class="{ 'border-destructive focus-visible:ring-destructive': erros.documento }"
+                  @input="onInputDocumento"
+                  @keypress="(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault() }"
+                  @paste="(e) => { e.preventDefault(); onInputDocumento({ target: { value: (e.clipboardData.getData('text') || '') } }); }"
+                />
+                <span
+                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="documentoFormatted.length >= DOCUMENTO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ documentoFormatted.length }}/{{ DOCUMENTO_MAX }}
+                </span>
+              </div>
               <p v-if="erros.documento" class="mt-0.5 text-[11px] text-destructive font-medium">{{ erros.documento }}</p>
             </div>
 
@@ -368,25 +466,47 @@ function salvar() {
               <label for="fornecedor-ie" class="mb-1 block text-xs font-medium text-foreground">
                 Inscrição Estadual
               </label>
-              <Input
-                id="fornecedor-ie"
-                v-model="form.ie"
-                placeholder="Isento / Nº IE"
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <input
+                  id="fornecedor-ie"
+                  :value="ieFormatted"
+                  :maxlength="IE_MAX"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="Nº IE"
+                  class="h-9 w-full cursor-text rounded-md border border-input bg-transparent px-3 pr-10 text-xs outline-none focus:ring-2 focus:ring-ring"
+                  @input="onInputIe"
+                  @keypress="(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault() }"
+                  @paste="(e) => { e.preventDefault(); onInputIe({ target: { value: (e.clipboardData.getData('text') || '') } }); }"
+                />
+                <span
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="ieFormatted.length >= IE_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ ieFormatted.length }}/{{ IE_MAX }}
+                </span>
+              </div>
             </div>
 
             <div class="col-span-1 sm:col-span-2 md:col-span-2 lg:col-span-1.5">
               <label for="fornecedor-contato" class="mb-1 block text-xs font-medium text-foreground">
                 Contato
               </label>
-              <Input
-                id="fornecedor-contato"
-                v-model="contatoModel"
-                placeholder="Ex.: Carlos (Vendas)"
-                :maxlength="CONTATO_MAX"
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-contato"
+                  v-model="contatoModel"
+                  placeholder="Ex.: Carlos (Vendas)"
+                  :maxlength="CONTATO_MAX"
+                  class="h-9 text-xs cursor-text pr-10"
+                />
+                <span
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.contato.length >= CONTATO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.contato.length }}/{{ CONTATO_MAX }}
+                </span>
+              </div>
             </div>
           </div>
         </section>
@@ -401,14 +521,28 @@ function salvar() {
               <label for="fornecedor-telefone" class="mb-1 block text-xs font-medium text-foreground">
                 Telefone / WhatsApp <span class="text-destructive">*</span>
               </label>
-              <Input
-                id="fornecedor-telefone"
-                v-model="form.telefone"
-                placeholder="(00) 00000-0000"
-                class="h-9 text-xs cursor-text"
-                :aria-invalid="!!erros.telefone"
-                :class="{ 'border-destructive focus-visible:ring-destructive': erros.telefone }"
-              />
+              <div class="relative">
+                <input
+                  id="fornecedor-telefone"
+                  :value="telefoneFormatted"
+                  :maxlength="TELEFONE_MAX"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="(00) 00000-0000"
+                  class="h-9 w-full cursor-text rounded-md border border-input bg-transparent px-3 pr-12 text-xs outline-none focus:ring-2 focus:ring-ring"
+                  :aria-invalid="!!erros.telefone"
+                  :class="{ 'border-destructive focus-visible:ring-destructive': erros.telefone }"
+                  @input="onInputTelefone"
+                  @keypress="(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault() }"
+                  @paste="(e) => { e.preventDefault(); onInputTelefone({ target: { value: (e.clipboardData.getData('text') || '') } }); }"
+                />
+                <span
+                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="telefoneFormatted.length >= TELEFONE_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ telefoneFormatted.length }}/{{ TELEFONE_MAX }}
+                </span>
+              </div>
               <p v-if="erros.telefone" class="mt-0.5 text-[11px] text-destructive font-medium">{{ erros.telefone }}</p>
             </div>
 
@@ -416,15 +550,24 @@ function salvar() {
               <label for="fornecedor-email" class="mb-1 block text-xs font-medium text-foreground">
                 E-mail
               </label>
-              <Input
-                id="fornecedor-email"
-                v-model="form.email"
-                type="email"
-                placeholder="vendas@fornecedor.com.br"
-                class="h-9 text-xs cursor-text"
-                :aria-invalid="!!erros.email"
-                :class="{ 'border-destructive focus-visible:ring-destructive': erros.email }"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-email"
+                  v-model="emailModel"
+                  type="email"
+                  placeholder="vendas@fornecedor.com.br"
+                  :maxlength="EMAIL_MAX"
+                  class="h-9 text-xs cursor-text pr-12"
+                  :aria-invalid="!!erros.email"
+                  :class="{ 'border-destructive focus-visible:ring-destructive': erros.email }"
+                />
+                <span
+                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.email.length >= EMAIL_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.email.length }}/{{ EMAIL_MAX }}
+                </span>
+              </div>
               <p v-if="erros.email" class="mt-0.5 text-[11px] text-destructive font-medium">{{ erros.email }}</p>
             </div>
 
@@ -433,14 +576,26 @@ function salvar() {
                 CEP
               </label>
               <div class="relative">
-                <Input
+                <input
                   id="fornecedor-cep"
-                  v-model="form.cep"
+                  :value="cepFormatted"
+                  :maxlength="CEP_MAX"
+                  inputmode="numeric"
+                  autocomplete="off"
                   placeholder="00000-000"
-                  class="h-9 text-xs cursor-text pr-8"
+                  class="h-9 w-full cursor-text rounded-md border border-input bg-transparent px-3 pr-12 text-xs outline-none focus:ring-2 focus:ring-ring"
+                  @input="onInputCep"
+                  @keypress="(e) => { if (!/[0-9]/.test(e.key)) e.preventDefault() }"
+                  @paste="(e) => { e.preventDefault(); onInputCep({ target: { value: (e.clipboardData.getData('text') || '') } }); }"
                 />
-                <Loader2 v-if="buscandoCep" class="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-muted-foreground" />
-                <Search v-else class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/40" />
+                <span
+                  v-if="!buscandoCep"
+                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="cepFormatted.length >= CEP_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ cepFormatted.length }}/{{ CEP_MAX }}
+                </span>
+                <Loader2 v-else class="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-muted-foreground" />
               </div>
             </div>
 
@@ -448,60 +603,105 @@ function salvar() {
               <label for="fornecedor-logradouro" class="mb-1 block text-xs font-medium text-foreground">
                 Logradouro
               </label>
-              <Input
-                id="fornecedor-logradouro"
-                v-model="form.logradouro"
-                placeholder="Rua, Avenida, Alameda..."
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-logradouro"
+                  v-model="logradouroModel"
+                  placeholder="Rua, Avenida, Alameda..."
+                  :maxlength="LOGRADOURO_MAX"
+                  class="h-9 text-xs cursor-text pr-12"
+                />
+                <span
+                  class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.logradouro.length >= LOGRADOURO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.logradouro.length }}/{{ LOGRADOURO_MAX }}
+                </span>
+              </div>
             </div>
 
             <div class="col-span-1 sm:col-span-1 md:col-span-2 lg:col-span-2">
               <label for="fornecedor-numero" class="mb-1 block text-xs font-medium text-foreground">
                 Número
               </label>
-              <Input
-                id="fornecedor-numero"
-                v-model="form.numero"
-                placeholder="Ex.: 1020"
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-numero"
+                  v-model="numeroModel"
+                  placeholder="Ex.: 1020"
+                  :maxlength="NUMERO_MAX"
+                  class="h-9 text-xs cursor-text pr-10"
+                />
+                <span
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.numero.length >= NUMERO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.numero.length }}/{{ NUMERO_MAX }}
+                </span>
+              </div>
             </div>
 
             <div class="col-span-1 sm:col-span-1 md:col-span-2 lg:col-span-3">
               <label for="fornecedor-complemento" class="mb-1 block text-xs font-medium text-foreground">
                 Complemento
               </label>
-              <Input
-                id="fornecedor-complemento"
-                v-model="form.complemento"
-                placeholder="Galpão 3, Sala 12"
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-complemento"
+                  v-model="complementoModel"
+                  placeholder="Galpão 3, Sala 12"
+                  :maxlength="COMPLEMENTO_MAX"
+                  class="h-9 text-xs cursor-text pr-10"
+                />
+                <span
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.complemento.length >= COMPLEMENTO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.complemento.length }}/{{ COMPLEMENTO_MAX }}
+                </span>
+              </div>
             </div>
 
             <div class="col-span-1 sm:col-span-1 md:col-span-2 lg:col-span-3">
               <label for="fornecedor-bairro" class="mb-1 block text-xs font-medium text-foreground">
                 Bairro
               </label>
-              <Input
-                id="fornecedor-bairro"
-                v-model="form.bairro"
-                placeholder="Ex.: Bairro Industrial"
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-bairro"
+                  v-model="bairroModel"
+                  placeholder="Ex.: Bairro Industrial"
+                  :maxlength="BAIRRO_MAX"
+                  class="h-9 text-xs cursor-text pr-10"
+                />
+                <span
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.bairro.length >= BAIRRO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.bairro.length }}/{{ BAIRRO_MAX }}
+                </span>
+              </div>
             </div>
 
             <div class="col-span-1 sm:col-span-1 md:col-span-4 lg:col-span-3">
               <label for="fornecedor-cidade" class="mb-1 block text-xs font-medium text-foreground">
                 Cidade
               </label>
-              <Input
-                id="fornecedor-cidade"
-                v-model="form.cidade"
-                placeholder="Ex.: São Paulo"
-                class="h-9 text-xs cursor-text"
-              />
+              <div class="relative">
+                <Input
+                  id="fornecedor-cidade"
+                  v-model="cidadeModel"
+                  placeholder="Ex.: São Paulo"
+                  :maxlength="CIDADE_MAX"
+                  class="h-9 text-xs cursor-text pr-10"
+                />
+                <span
+                  class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
+                  :class="form.cidade.length >= CIDADE_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                >
+                  {{ form.cidade.length }}/{{ CIDADE_MAX }}
+                </span>
+              </div>
             </div>
 
             <div class="col-span-1 sm:col-span-1 md:col-span-2 lg:col-span-1">
@@ -565,7 +765,7 @@ function salvar() {
           <div class="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[11px] text-muted-foreground">
             <Info class="size-3.5 shrink-0 text-emerald-500" />
             <p class="truncate">
-              Condições de pagamento, dados bancários e histórico de compras podem ser ajustados na página de detalhes.
+              Condições de pagamento, dados bancários e histórico de compras podem ser ajustados no módulo de Compras (Entradas).
             </p>
           </div>
         </section>
@@ -576,8 +776,8 @@ function salvar() {
           </Button>
           <Button
             type="submit"
-            :disabled="salvando"
-            class="cursor-pointer h-9 text-xs bg-emerald-500 text-black hover:bg-emerald-600 w-full sm:w-auto min-w-[130px]"
+            :disabled="salvando || !formPreenchido"
+            class="cursor-pointer h-9 text-xs bg-emerald-500 text-black hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto min-w-[130px]"
           >
             <Loader2 v-if="salvando" class="size-3.5 animate-spin mr-1.5" />
             <Save v-else class="size-3.5 mr-1.5" />
