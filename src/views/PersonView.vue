@@ -1,6 +1,5 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
 import {
   ArrowDown,
   ArrowUp,
@@ -18,6 +17,7 @@ import EmptyState from '@/components/page-shell/EmptyState.vue'
 import TableSkeleton from '@/components/page-shell/TableSkeleton.vue'
 import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
+import NewPerson from '@/components/NewPerson.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 
 import { Button } from '@/components/ui/button'
@@ -46,11 +46,8 @@ onMounted(() => {
 })
 
 const PORPAGINA = 8
-const BUSCA_MAX = 60 // limite de caracteres do campo de busca
+const BUSCA_MAX = 60
 
-// `busca` é um computed com getter/setter: qualquer tentativa de gravar um
-// valor maior que BUSCA_MAX é cortada na hora, de forma síncrona — não
-// depende do SearchField repassar `maxlength` pro input interno.
 const buscaBruta = ref('')
 const busca = computed({
   get: () => buscaBruta.value,
@@ -64,15 +61,12 @@ const status = ref('todos')
 const pagina = ref(1)
 const carregando = ref(false)
 const excluir = ref(null)
+const modalAberto = ref(false) // controla o modal de cadastro
 
-// extrai só os dígitos de uma string — usado para comparar telefone e
-// documento ignorando espaços, parênteses, pontos e traços
 function apenasNumeros(texto) {
   return (texto || '').replace(/\D/g, '')
 }
 
-// bloqueia a tecla ANTES dela virar caractere, quando já está no limite —
-// backspace, setas, delete, tab etc. continuam funcionando normalmente
 const TECLAS_PERMITIDAS = new Set([
   'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
   'Tab', 'Home', 'End', 'Enter', 'Escape', 'Shift', 'Control', 'Alt', 'Meta',
@@ -86,9 +80,8 @@ function bloquearExcedente(evento) {
   }
 }
 
-// ordenação clicável nas colunas (Nome e Cadastro)
-const sortCampo = ref(null) // 'nome' | 'cadastro' | null
-const sortDirecao = ref('asc') // 'asc' | 'desc'
+const sortCampo = ref(null)
+const sortDirecao = ref('asc')
 
 function ordenarPor(campo) {
   if (sortCampo.value === campo) {
@@ -99,7 +92,6 @@ function ordenarPor(campo) {
   }
 }
 
-// qualquer mudança de filtro/busca/ordenação volta pra página 1
 watch([busca, grupo, status, sortCampo, sortDirecao], () => {
   pagina.value = 1
 })
@@ -113,11 +105,7 @@ const filtradas = computed(() => {
     if (status.value !== 'todos' && p.status !== status.value) return false
     if (termo === '') return true
 
-    // nome e e-mail: busca textual normal
     const combinaTexto = [p.nome, p.email].some((c) => c.toLowerCase().includes(termo))
-
-    // documento e telefone: compara só os dígitos, ignorando
-    // espaço, ponto, traço e parênteses de ambos os lados
     const combinaNumero =
       termoNumerico !== '' &&
       [p.documento, p.telefone].some((c) => apenasNumeros(c).includes(termoNumerico))
@@ -136,7 +124,6 @@ const ordenadas = computed(() => {
     if (sortCampo.value === 'nome') {
       return a.nome.localeCompare(b.nome, 'pt-BR') * mult
     }
-    // 'cadastro' vem como 'AAAA-MM-DD', comparação de string já ordena certo
     return a.cadastro.localeCompare(b.cadastro) * mult
   })
 
@@ -163,6 +150,25 @@ function exportar() {
   sucesso('Exportação concluída', 'Lista exportada em CSV.')
 }
 
+function abrirModal() {
+  modalAberto.value = true
+}
+
+function pessoaCriada(pessoa) {
+  // mock: insere no topo da lista local; troque por refetch quando integrar a API
+  pessoas.unshift({
+    id: Date.now(),
+    nome: pessoa.nome,
+    documento: pessoa.documento,
+    telefone: pessoa.telefone,
+    email: pessoa.email || '',
+    grupo: pessoa.grupo,
+    status: pessoa.ativo ? 'ativo' : 'inativo',
+    cadastro: new Date().toISOString().slice(0, 10),
+  })
+  pagina.value = 1
+}
+
 function abrirCadastro() {
   info('Abrindo cadastro', 'Redirecionando para o cadastro da pessoa…')
 }
@@ -183,10 +189,11 @@ function confirmarExclusao() {
       <Button variant="outline" @click="exportar" class="cursor-pointer">
         <Download class="size-4" /> Exportar
       </Button>
-      <Button as-child class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600">
-        <RouterLink to="/pessoas/nova">
-          <Plus class="size-4" /> Nova pessoa
-        </RouterLink>
+      <Button
+        class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+        @click="abrirModal"
+      >
+        <Plus class="size-4" /> Nova pessoa
       </Button>
     </template>
   </PageHeader>
@@ -244,8 +251,11 @@ function confirmarExclusao() {
         <template #acao>
           <div class="flex gap-2">
             <Button variant="outline" @click="limpar" class="cursor-pointer">Limpar filtros</Button>
-            <Button as-child class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600">
-              <RouterLink to="/pessoas/nova">Cadastrar pessoa</RouterLink>
+            <Button
+              class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+              @click="abrirModal"
+            >
+              Cadastrar pessoa
             </Button>
           </div>
         </template>
@@ -391,4 +401,6 @@ function confirmarExclusao() {
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+
+  <NewPerson v-model:open="modalAberto" @created="pessoaCriada" />
 </template>
