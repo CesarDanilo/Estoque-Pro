@@ -1,13 +1,16 @@
 <script setup>
 import { RouterView } from 'vue-router'
 import { Menu } from 'lucide-vue-next'
+import { Toaster } from 'vue-sonner'
 
 import AppSidebar from '@/components/AppSidebar.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
 import { Button } from '@/components/ui/button'
 import { useUiStore } from '@/stores/ui'
+import { useThemeStore } from '@/stores/theme'
 
 const ui = useUiStore()
+const theme = useThemeStore()
 </script>
 
 <template>
@@ -15,7 +18,7 @@ const ui = useUiStore()
     <AppSidebar />
 
     <div class="flex min-w-0 flex-1 flex-col">
-      <header class="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background px-4">
+      <header class="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background px-4">
         <Button
           variant="ghost"
           size="icon"
@@ -42,5 +45,7 @@ const ui = useUiStore()
         <RouterView />
       </main>
     </div>
+
+    <Toaster rich-colors :theme="theme.dark ? 'dark' : 'light'" position="top-right" />
   </div>
 </template>

@@ -116,3 +116,18 @@ export const vendasPorGrupo = [
   { grupo: 'Limpeza', valor: 5200 },
   { grupo: 'Higiene', valor: 4100 },
 ]
+
+export const pessoas = [
+  { id: 1, nome: 'Mercado Boa Vista', documento: '12.345.678/0001-90', telefone: '(11) 4002-8922', email: 'contato@boavista.com', grupo: 'Cliente', status: 'ativo', cadastro: '2025-02-14' },
+  { id: 2, nome: 'Padaria Central', documento: '98.765.432/0001-10', telefone: '(11) 4003-1234', email: 'padaria@central.com', grupo: 'Cliente', status: 'ativo', cadastro: '2025-03-02' },
+  { id: 3, nome: 'João Pereira', documento: '123.456.789-00', telefone: '(11) 98888-1122', email: 'joao.pereira@gmail.com', grupo: 'Cliente', status: 'ativo', cadastro: '2025-04-18' },
+  { id: 4, nome: 'Distribuidora Rio', documento: '11.222.333/0001-44', telefone: '(21) 3344-5566', email: 'vendas@distrio.com', grupo: 'Fornecedor', status: 'ativo', cadastro: '2024-11-09' },
+  { id: 5, nome: 'Atacado Sul', documento: '22.333.444/0001-55', telefone: '(51) 3355-6677', email: 'comercial@atacadosul.com', grupo: 'Fornecedor', status: 'ativo', cadastro: '2024-09-27' },
+  { id: 6, nome: 'Ana Souza', documento: '234.567.890-11', telefone: '(11) 97777-3344', email: 'ana.souza@gmail.com', grupo: 'Cliente', status: 'inativo', cadastro: '2025-01-05' },
+  { id: 7, nome: 'Juliana Prado', documento: '345.678.901-22', telefone: '(11) 96666-5566', email: 'juliana.prado@estoquepro.com', grupo: 'Colaborador', status: 'ativo', cadastro: '2024-08-01' },
+  { id: 8, nome: 'Carlos Lima', documento: '456.789.012-33', telefone: '(11) 95555-7788', email: 'carlos.lima@estoquepro.com', grupo: 'Colaborador', status: 'ativo', cadastro: '2024-08-15' },
+  { id: 9, nome: 'Mercadinho Sol', documento: '33.444.555/0001-66', telefone: '(11) 4004-9988', email: 'sol@mercadinho.com', grupo: 'Cliente', status: 'ativo', cadastro: '2025-05-20' },
+  { id: 10, nome: 'Fornecedora Nordeste', documento: '44.555.666/0001-77', telefone: '(81) 3366-8899', email: 'contato@fornordeste.com', grupo: 'Fornecedor', status: 'inativo', cadastro: '2024-06-11' },
+  { id: 11, nome: 'Pedro Santos', documento: '567.890.123-44', telefone: '(11) 94444-2233', email: 'pedro.santos@gmail.com', grupo: 'Cliente', status: 'ativo', cadastro: '2025-06-30' },
+  { id: 12, nome: 'Mariana Costa', documento: '678.901.234-55', telefone: '(11) 93333-4455', email: 'mariana.costa@estoquepro.com', grupo: 'Colaborador', status: 'ativo', cadastro: '2024-10-03' },
+]
