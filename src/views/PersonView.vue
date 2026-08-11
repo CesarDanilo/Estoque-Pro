@@ -48,24 +48,42 @@ onMounted(() => {
 const PORPAGINA = 8
 const BUSCA_MAX = 60 // limite de caracteres do campo de busca
 
-const busca = ref('')
+// `busca` é um computed com getter/setter: qualquer tentativa de gravar um
+// valor maior que BUSCA_MAX é cortada na hora, de forma síncrona — não
+// depende do SearchField repassar `maxlength` pro input interno.
+const buscaBruta = ref('')
+const busca = computed({
+  get: () => buscaBruta.value,
+  set: (valor) => {
+    buscaBruta.value = (valor ?? '').slice(0, BUSCA_MAX)
+  },
+})
+
 const grupo = ref('todos')
 const status = ref('todos')
 const pagina = ref(1)
 const carregando = ref(false)
 const excluir = ref(null)
 
-// impede colar/digitar acima do limite, mesmo que o input não force via maxlength
-watch(busca, (valor) => {
-  if (valor.length > BUSCA_MAX) {
-    busca.value = valor.slice(0, BUSCA_MAX)
-  }
-})
-
 // extrai só os dígitos de uma string — usado para comparar telefone e
 // documento ignorando espaços, parênteses, pontos e traços
 function apenasNumeros(texto) {
   return (texto || '').replace(/\D/g, '')
+}
+
+// bloqueia a tecla ANTES dela virar caractere, quando já está no limite —
+// backspace, setas, delete, tab etc. continuam funcionando normalmente
+const TECLAS_PERMITIDAS = new Set([
+  'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  'Tab', 'Home', 'End', 'Enter', 'Escape', 'Shift', 'Control', 'Alt', 'Meta',
+])
+function bloquearExcedente(evento) {
+  if (TECLAS_PERMITIDAS.has(evento.key) || evento.ctrlKey || evento.metaKey || evento.altKey) {
+    return
+  }
+  if (busca.value.length >= BUSCA_MAX) {
+    evento.preventDefault()
+  }
 }
 
 // ordenação clicável nas colunas (Nome e Cadastro)
@@ -176,13 +194,21 @@ function confirmarExclusao() {
   <div class="p-4 md:p-6">
     <Section>
       <div class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:p-5">
-        <SearchField
-          v-model="busca"
-          label="Buscar pessoa por nome, documento, telefone ou e-mail"
-          placeholder="Buscar por nome, documento ou telefone…"
-          class="w-full md:max-w-md lg:max-w-lg"
-          :maxlength="BUSCA_MAX"
-        />
+        <div class="relative w-full md:max-w-md lg:max-w-lg" @keydown="bloquearExcedente">
+          <SearchField
+            v-model="busca"
+            label="Buscar pessoa por nome, documento, telefone ou e-mail"
+            placeholder="Buscar por nome, documento ou telefone…"
+            class="w-full"
+            :maxlength="BUSCA_MAX"
+          />
+          <span
+            class="pointer-events-none absolute right-3 top-1/2 z-10 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
+            :class="busca.length >= BUSCA_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+          >
+            {{ busca.length }}/{{ BUSCA_MAX }}
+          </span>
+        </div>
         <div class="grid grid-cols-2 gap-2 md:ml-auto md:flex md:shrink-0">
           <Select v-model="grupo">
             <SelectTrigger class="h-10 cursor-pointer md:w-40" aria-label="Filtrar por grupo">
