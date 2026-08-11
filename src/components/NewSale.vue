@@ -6,6 +6,7 @@ import {
   Minus,
   PackagePlus,
   Plus,
+  Search,
   Trash2,
   TriangleAlert,
   UserPlus,
@@ -48,6 +49,7 @@ const { sucesso, erro } = useFeedback()
 
 const cliente = ref('')
 const semCliente = ref(false)
+const buscaCliente = ref('')
 const buscaBruta = ref('')
 const itens = ref([])
 const pagamento = ref('')
@@ -133,9 +135,20 @@ const descontoPercentual = criarMascaraPercentual(5)
 const descontoValorPreenchido = computed(() => desconto.valorNumerico.value > 0)
 const descontoPercentualPreenchido = computed(() => descontoPercentual.valorNumerico.value > 0)
 
-const clientesAtivos = computed(() =>
-  pessoas.filter((p) => p.grupo === 'Cliente' && p.status === 'ativo')
-)
+// Clientes ativos ordenados alfabeticamente e filtrados pela busca do select
+const clientesAtivos = computed(() => {
+  const termo = buscaCliente.value.trim().toLowerCase()
+
+  return pessoas
+    .filter((p) => p.grupo === 'Cliente' && p.status === 'ativo')
+    .filter((p) => {
+      if (!termo) return true
+      const nomeMatch = p.nome?.toLowerCase().includes(termo)
+      const docMatch = p.documento?.toLowerCase().includes(termo)
+      return nomeMatch || docMatch
+    })
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+})
 
 const disponiveis = computed(() => {
   const termo = busca.value.trim().toLowerCase()
@@ -174,6 +187,7 @@ watch(
 function resetar() {
   cliente.value = ''
   semCliente.value = false
+  buscaCliente.value = ''
   buscaBruta.value = ''
   itens.value = []
   desconto.setValue('')
@@ -295,9 +309,7 @@ async function finalizar() {
 
       <form class="space-y-6 pt-1" @submit.prevent="finalizar">
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <!-- Coluna esquerda: cliente + produtos + itens da venda -->
           <div class="space-y-6">
-            <!-- Cliente -->
             <section class="space-y-3">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 1. Cliente
@@ -316,14 +328,35 @@ async function finalizar() {
                       <SelectValue placeholder="Selecione o cliente" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem
-                        v-for="p in clientesAtivos"
-                        :key="p.id"
-                        :value="p.nome"
-                        class="cursor-pointer"
-                      >
-                        {{ p.nome }}
-                      </SelectItem>
+                      <div class="sticky top-0 z-10 bg-popover p-2 border-b border-border">
+                        <div class="relative flex items-center">
+                          <Search class="absolute left-2.5 size-3.5 text-muted-foreground pointer-events-none" />
+                          <input
+                            v-model="buscaCliente"
+                            type="text"
+                            placeholder="Pesquisar cliente..."
+                            class="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring"
+                            @keydown.stop
+                          />
+                        </div>
+                      </div>
+
+                      <div class="max-h-[200px] overflow-y-auto pt-1">
+                        <p
+                          v-if="clientesAtivos.length === 0"
+                          class="p-2 text-center text-xs text-muted-foreground"
+                        >
+                          Nenhum cliente encontrado.
+                        </p>
+                        <SelectItem
+                          v-for="p in clientesAtivos"
+                          :key="p.id"
+                          :value="p.nome"
+                          class="cursor-pointer"
+                        >
+                          {{ p.nome }}
+                        </SelectItem>
+                      </div>
                     </SelectContent>
                   </Select>
                   <Button
@@ -347,7 +380,6 @@ async function finalizar() {
               </div>
             </section>
 
-            <!-- Produtos -->
             <section class="space-y-3 border-t border-border pt-6">
               <div class="flex items-center justify-between">
                 <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -420,7 +452,6 @@ async function finalizar() {
               </ul>
             </section>
 
-            <!-- Itens da venda -->
             <section class="space-y-3 border-t border-border pt-6">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 3. Itens da venda
@@ -487,8 +518,6 @@ async function finalizar() {
             </section>
           </div>
 
-          <!-- Linha divisória vertical (desktop) -->
-          <!-- Coluna direita: pagamento + totais -->
           <div class="space-y-4 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
             <section class="space-y-3">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -593,9 +622,7 @@ async function finalizar() {
     </DialogContent>
   </Dialog>
 
-  <!-- Cadastro rápido de cliente -->
   <NewPerson v-model:open="pessoaModalAberto" :pessoa="null" @created="pessoaCriada" />
 
-  <!-- Cadastro rápido de produto -->
   <NewProduct v-model:open="produtoModalAberto" :produto="null" @salvo="produtoCriado" />
 </template>
