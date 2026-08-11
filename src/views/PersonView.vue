@@ -46,6 +46,7 @@ onMounted(() => {
 })
 
 const PORPAGINA = 8
+const BUSCA_MAX = 60 // limite de caracteres do campo de busca
 
 const busca = ref('')
 const grupo = ref('todos')
@@ -53,6 +54,19 @@ const status = ref('todos')
 const pagina = ref(1)
 const carregando = ref(false)
 const excluir = ref(null)
+
+// impede colar/digitar acima do limite, mesmo que o input não force via maxlength
+watch(busca, (valor) => {
+  if (valor.length > BUSCA_MAX) {
+    busca.value = valor.slice(0, BUSCA_MAX)
+  }
+})
+
+// extrai só os dígitos de uma string — usado para comparar telefone e
+// documento ignorando espaços, parênteses, pontos e traços
+function apenasNumeros(texto) {
+  return (texto || '').replace(/\D/g, '')
+}
 
 // ordenação clicável nas colunas (Nome e Cadastro)
 const sortCampo = ref(null) // 'nome' | 'cadastro' | null
@@ -72,17 +86,27 @@ watch([busca, grupo, status, sortCampo, sortDirecao], () => {
   pagina.value = 1
 })
 
-const filtradas = computed(() =>
-  pessoas.filter(
-    (p) =>
-      (grupo.value === 'todos' || p.grupo === grupo.value) &&
-      (status.value === 'todos' || p.status === status.value) &&
-      (busca.value.trim() === '' ||
-        [p.nome, p.documento, p.telefone, p.email].some((c) =>
-          c.toLowerCase().includes(busca.value.toLowerCase())
-        ))
-  )
-)
+const filtradas = computed(() => {
+  const termo = busca.value.trim().toLowerCase()
+  const termoNumerico = apenasNumeros(busca.value)
+
+  return pessoas.filter((p) => {
+    if (grupo.value !== 'todos' && p.grupo !== grupo.value) return false
+    if (status.value !== 'todos' && p.status !== status.value) return false
+    if (termo === '') return true
+
+    // nome e e-mail: busca textual normal
+    const combinaTexto = [p.nome, p.email].some((c) => c.toLowerCase().includes(termo))
+
+    // documento e telefone: compara só os dígitos, ignorando
+    // espaço, ponto, traço e parênteses de ambos os lados
+    const combinaNumero =
+      termoNumerico !== '' &&
+      [p.documento, p.telefone].some((c) => apenasNumeros(c).includes(termoNumerico))
+
+    return combinaTexto || combinaNumero
+  })
+})
 
 const ordenadas = computed(() => {
   if (!sortCampo.value) return filtradas.value
@@ -157,6 +181,7 @@ function confirmarExclusao() {
           label="Buscar pessoa por nome, documento, telefone ou e-mail"
           placeholder="Buscar por nome, documento ou telefone…"
           class="w-full md:max-w-md lg:max-w-lg"
+          :maxlength="BUSCA_MAX"
         />
         <div class="grid grid-cols-2 gap-2 md:ml-auto md:flex md:shrink-0">
           <Select v-model="grupo">
