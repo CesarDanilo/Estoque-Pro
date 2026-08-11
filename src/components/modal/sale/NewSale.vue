@@ -69,26 +69,36 @@ const busca = computed({
   },
 })
 
-// ---- Máscara monetária (centavos) — mesmo padrão usado em custo/preço do produto ----
+// ---- Helper para garantir números válidos ----
+function safeNumber(val) {
+  const num = Number(val)
+  return isNaN(num) ? 0 : num
+}
+
+// ---- Máscara monetária (centavos) ----
 function criarMascaraMoeda(limiteDigitos = 8) {
   const raw = ref('')
 
+  const valorNumerico = computed(() => {
+    if (!raw.value) return 0
+    const num = Number(raw.value) / 100
+    return isNaN(num) ? 0 : num
+  })
+
   const formatted = computed(() => {
     if (!raw.value) return ''
-    const numero = Number(raw.value) / 100
+    const numero = valorNumerico.value
     return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   })
 
-  const valorNumerico = computed(() => (raw.value ? Number(raw.value) / 100 : 0))
-
   function onInput(evento) {
-    const digitos = evento.target.value.replace(/\D/g, '').slice(0, limiteDigitos)
+    const val = evento?.target?.value || ''
+    const digitos = val.replace(/\D/g, '').slice(0, limiteDigitos)
     raw.value = digitos
-    evento.target.value = formatted.value
   }
 
   function setValue(numero) {
-    if (numero === null || numero === undefined || numero === '') {
+    if (numero === null || numero === undefined || numero === '' || isNaN(Number(numero))) {
       raw.value = ''
       return
     }
@@ -98,27 +108,31 @@ function criarMascaraMoeda(limiteDigitos = 8) {
   return { raw, formatted, valorNumerico, onInput, setValue }
 }
 
-// ---- Máscara percentual (0 a 100,00%) — mesmo esquema de centavos, mas travando em 100 ----
+// ---- Máscara percentual (0 a 100,00%) ----
 function criarMascaraPercentual(limiteDigitos = 5) {
   const raw = ref('')
 
+  const valorNumerico = computed(() => {
+    if (!raw.value) return 0
+    const num = Number(raw.value) / 100
+    return isNaN(num) ? 0 : num
+  })
+
   const formatted = computed(() => {
     if (!raw.value) return ''
-    const numero = Number(raw.value) / 100
+    const numero = valorNumerico.value
     return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   })
 
-  const valorNumerico = computed(() => (raw.value ? Number(raw.value) / 100 : 0))
-
   function onInput(evento) {
-    let digitos = evento.target.value.replace(/\D/g, '').slice(0, limiteDigitos)
-    if (Number(digitos) > 10000) digitos = '10000' // trava em 100,00%
+    const val = evento?.target?.value || ''
+    let digitos = val.replace(/\D/g, '').slice(0, limiteDigitos)
+    if (Number(digitos) > 10000) digitos = '10000'
     raw.value = digitos
-    evento.target.value = formatted.value
   }
 
   function setValue(numero) {
-    if (numero === null || numero === undefined || numero === '') {
+    if (numero === null || numero === undefined || numero === '' || isNaN(Number(numero))) {
       raw.value = ''
       return
     }
@@ -128,14 +142,21 @@ function criarMascaraPercentual(limiteDigitos = 5) {
   return { raw, formatted, valorNumerico, onInput, setValue }
 }
 
+// Desconto
 const desconto = criarMascaraMoeda(8)
 const descontoPercentual = criarMascaraPercentual(5)
 
-// só um tipo de desconto pode estar preenchido por vez (valor numérico > 0, não apenas "tem dígitos")
 const descontoValorPreenchido = computed(() => desconto.valorNumerico.value > 0)
 const descontoPercentualPreenchido = computed(() => descontoPercentual.valorNumerico.value > 0)
 
-// Clientes ativos ordenados alfabeticamente e filtrados pela busca do select
+// Acréscimo
+const acrescimo = criarMascaraMoeda(8)
+const acrescimoPercentual = criarMascaraPercentual(5)
+
+const acrescimoValorPreenchido = computed(() => acrescimo.valorNumerico.value > 0)
+const acrescimoPercentualPreenchido = computed(() => acrescimoPercentual.valorNumerico.value > 0)
+
+// Clientes ativos
 const clientesAtivos = computed(() => {
   const termo = buscaCliente.value.trim().toLowerCase()
 
@@ -158,23 +179,60 @@ const disponiveis = computed(() => {
   )
 })
 
-const subtotal = computed(() => itens.value.reduce((s, i) => s + i.qtd * i.valor, 0))
-
-const valorDescontoAplicado = computed(() => {
-  if (descontoValorPreenchido.value) return desconto.valorNumerico.value
-  if (descontoPercentualPreenchido.value) return subtotal.value * (descontoPercentual.valorNumerico.value / 100)
-  return 0
+const subtotal = computed(() => {
+  const res = itens.value.reduce((s, i) => s + safeNumber(i.qtd) * safeNumber(i.valor), 0)
+  return safeNumber(res)
 })
 
-const total = computed(() => Math.max(0, subtotal.value - valorDescontoAplicado.value))
+const valorDescontoAplicado = computed(() => {
+  let val = 0
+  if (descontoValorPreenchido.value) {
+    val = desconto.valorNumerico.value
+  } else if (descontoPercentualPreenchido.value) {
+    val = subtotal.value * (descontoPercentual.valorNumerico.value / 100)
+  }
+  return safeNumber(val)
+})
 
-const podeFinalizar = computed(
-  () => (!!cliente.value || semCliente.value) && !!pagamento.value && itens.value.length > 0
-)
+const valorAcrescimoAplicado = computed(() => {
+  let val = 0
+  if (acrescimoValorPreenchido.value) {
+    val = acrescimo.valorNumerico.value
+  } else if (acrescimoPercentualPreenchido.value) {
+    val = subtotal.value * (acrescimoPercentual.valorNumerico.value / 100)
+  }
+  return safeNumber(val)
+})
 
-// ao marcar "venda sem cliente", limpa a seleção de cliente
+const total = computed(() => {
+  const res = subtotal.value - valorDescontoAplicado.value + valorAcrescimoAplicado.value
+  return Math.max(0, safeNumber(res))
+})
+
+// ---- VALIDAÇÃO DO CLIENTE ----
+const temClienteValido = computed(() => {
+  // EXCEÇÃO: Se marcou "sem cliente", ignora a seleção do cliente e libera a validação
+  if (Boolean(semCliente.value) === true) {
+    return true
+  }
+  // Se não marcou "sem cliente", exige obrigatoriamente um cliente selecionado
+  return Boolean(cliente.value && String(cliente.value).trim() !== '')
+})
+
+// ---- VALIDAÇÃO GLOBAL DA VENDA ----
+const podeFinalizar = computed(() => {
+  const clienteValido = temClienteValido.value
+  const temFormaPagamento = Boolean(pagamento.value)
+  const temItensNoCarrinho = itens.value.length > 0
+  const totalCalculadoValido = !isNaN(total.value)
+
+  return clienteValido && temFormaPagamento && temItensNoCarrinho && totalCalculadoValido
+})
+
 watch(semCliente, (marcado) => {
-  if (marcado) cliente.value = ''
+  if (marcado) {
+    cliente.value = ''
+  }
 })
 
 watch(
@@ -192,6 +250,8 @@ function resetar() {
   itens.value = []
   desconto.setValue('')
   descontoPercentual.setValue('')
+  acrescimo.setValue('')
+  acrescimoPercentual.setValue('')
   pagamento.value = ''
   salvando.value = false
 }
@@ -211,7 +271,7 @@ function adicionar(id) {
     }
     atual.qtd += 1
   } else {
-    itens.value.push({ id, nome: p.nome, qtd: 1, valor: p.preco, estoque: p.estoque })
+    itens.value.push({ id, nome: p.nome, qtd: 1, valor: safeNumber(p.preco), estoque: safeNumber(p.estoque) })
   }
   busca.value = ''
 }
@@ -228,7 +288,6 @@ function aumentar(item) {
   item.qtd = Math.min(item.estoque, item.qtd + 1)
 }
 
-// cliente cadastrado direto do "+"; preenche automaticamente e fecha o modal
 function pessoaCriada(pessoa) {
   const nova = {
     id: Date.now(),
@@ -248,10 +307,10 @@ function pessoaCriada(pessoa) {
   }
   pessoas.unshift(nova)
   cliente.value = nova.nome
+  semCliente.value = false
   sucesso('Cliente cadastrado', `${nova.nome} já está selecionado nesta venda.`)
 }
 
-// produto cadastrado direto do "+"; entra automaticamente no carrinho
 function produtoCriado(produto) {
   const novo = {
     id: Date.now(),
@@ -262,10 +321,10 @@ function produtoCriado(produto) {
     marca: produto.marca,
     status: produto.ativo ? 'ativo' : 'inativo',
     descricao: produto.descricao,
-    custo: produto.custo,
-    preco: produto.preco,
-    estoque: produto.estoque,
-    minimo: produto.minimo,
+    custo: safeNumber(produto.custo),
+    preco: safeNumber(produto.preco),
+    estoque: safeNumber(produto.estoque),
+    minimo: safeNumber(produto.minimo),
   }
   produtos.unshift(novo)
   adicionar(novo.id)
@@ -288,7 +347,10 @@ async function finalizar() {
       itens: itens.value.map((i) => ({ ...i })),
       desconto: valorDescontoAplicado.value,
       descontoPercentual: descontoPercentualPreenchido.value ? descontoPercentual.valorNumerico.value : null,
+      acrescimo: valorAcrescimoAplicado.value,
+      acrescimoPercentual: acrescimoPercentualPreenchido.value ? acrescimoPercentual.valorNumerico.value : null,
       pagamento: pagamento.value,
+      total: total.value,
     })
     fechar()
   } finally {
@@ -372,7 +434,12 @@ async function finalizar() {
                   </Button>
                 </div>
                 <div class="mt-2 flex items-center gap-2">
-                  <Checkbox id="sem-cliente" v-model:checked="semCliente" class="cursor-pointer" />
+                  <Checkbox
+                    id="sem-cliente"
+                    :checked="semCliente"
+                    @update:checked="(v) => (semCliente = Boolean(v))"
+                    class="cursor-pointer"
+                  />
                   <Label for="sem-cliente" class="cursor-pointer text-sm font-normal text-muted-foreground">
                     Venda sem cliente identificado
                   </Label>
@@ -519,9 +586,9 @@ async function finalizar() {
           </div>
 
           <div class="space-y-4 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-            <section class="space-y-3">
+            <section class="space-y-4">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-                4. Pagamento
+                4. Pagamento e Ajustes
               </h3>
 
               <div>
@@ -558,9 +625,42 @@ async function finalizar() {
                     </span>
                   </div>
                 </div>
-                <p class="mt-1 text-[11px] text-muted-foreground">
-                  Use valor em R$ ou em %. Preenchendo um, o outro é bloqueado.
-                </p>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-sm font-medium text-foreground">Acréscimo</label>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="relative">
+                    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      R$
+                    </span>
+                    <input
+                      id="acrescimo"
+                      :value="acrescimo.formatted.value"
+                      inputmode="decimal"
+                      placeholder="0,00"
+                      :disabled="acrescimoPercentualPreenchido"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      @input="acrescimo.onInput"
+                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
+                    />
+                  </div>
+                  <div class="relative">
+                    <input
+                      id="acrescimo-percentual"
+                      :value="acrescimoPercentual.formatted.value"
+                      inputmode="decimal"
+                      placeholder="0,00"
+                      :disabled="acrescimoValorPreenchido"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      @input="acrescimoPercentual.onInput"
+                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
+                    />
+                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -585,12 +685,19 @@ async function finalizar() {
                   <span>Subtotal</span>
                   <span>{{ brl(subtotal) }}</span>
                 </div>
-                <div class="flex justify-between text-muted-foreground">
+                <div v-if="valorDescontoAplicado > 0" class="flex justify-between text-muted-foreground">
                   <span>
                     Desconto
                     <template v-if="descontoPercentualPreenchido"> ({{ descontoPercentual.formatted.value }}%)</template>
                   </span>
                   <span>- {{ brl(valorDescontoAplicado) }}</span>
+                </div>
+                <div v-if="valorAcrescimoAplicado > 0" class="flex justify-between text-muted-foreground">
+                  <span>
+                    Acréscimo
+                    <template v-if="acrescimoPercentualPreenchido"> ({{ acrescimoPercentual.formatted.value }}%)</template>
+                  </span>
+                  <span>+ {{ brl(valorAcrescimoAplicado) }}</span>
                 </div>
                 <div class="flex items-center justify-between border-t border-border pt-1.5 font-medium">
                   <span>Total a pagar</span>
@@ -610,7 +717,7 @@ async function finalizar() {
             <Button
               type="submit"
               :disabled="!podeFinalizar || salvando"
-              class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed"
+              class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Loader2 v-if="salvando" class="size-4 animate-spin" />
               <ArrowUpRight v-else class="size-4" />
