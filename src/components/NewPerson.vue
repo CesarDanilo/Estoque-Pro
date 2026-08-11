@@ -39,6 +39,9 @@ const { sucesso, erro } = useFeedback()
 const NOME_MAX = 120
 const EMAIL_MAX = 120
 
+// aceita apenas dígitos (0-9) — usado para validar documento, telefone e cep
+const SOMENTE_DIGITOS = /^\d+$/
+
 const documento = useDocumentMask()
 const telefone = usePhoneMask()
 const cep = useCepMask()
@@ -132,6 +135,36 @@ watch(
   },
 )
 
+// remove o erro de documento assim que o valor voltar a ser só dígitos
+watch(
+  () => documento.raw.value,
+  (valor) => {
+    if (erros.documento && (!valor || SOMENTE_DIGITOS.test(valor))) {
+      delete erros.documento
+    }
+  },
+)
+
+// remove o erro de telefone assim que o valor voltar a ser só dígitos
+watch(
+  () => telefone.raw.value,
+  (valor) => {
+    if (erros.telefone && (!valor || SOMENTE_DIGITOS.test(valor))) {
+      delete erros.telefone
+    }
+  },
+)
+
+// remove o erro de cep assim que o valor voltar a ser só dígitos
+watch(
+  () => cep.raw.value,
+  (valor) => {
+    if (erros.cep && (!valor || SOMENTE_DIGITOS.test(valor))) {
+      delete erros.cep
+    }
+  },
+)
+
 function resetar() {
   form.nome = ''
   form.grupo = 'Cliente'
@@ -179,8 +212,25 @@ function validar() {
     })
   }
 
-  if (documento.raw.value.length > 0 && !documento.isValid.value) {
+  // documento: obrigatório numérico — só dígitos, sem letras ou símbolos soltos
+  if (!documento.raw.value) {
+    erros.documento = 'Informe o CPF ou CNPJ.'
+  } else if (!SOMENTE_DIGITOS.test(documento.raw.value)) {
+    erros.documento = 'Documento deve conter apenas números.'
+  } else if (!documento.isValid.value) {
     erros.documento = `${documento.tipo.value} inválido.`
+  }
+
+  // telefone: obrigatório numérico — só dígitos
+  if (!telefone.raw.value) {
+    erros.telefone = 'Informe o telefone.'
+  } else if (!SOMENTE_DIGITOS.test(telefone.raw.value)) {
+    erros.telefone = 'Telefone deve conter apenas números.'
+  }
+
+  // cep: opcional, mas se preenchido precisa ser só dígitos
+  if (cep.raw.value && !SOMENTE_DIGITOS.test(cep.raw.value)) {
+    erros.cep = 'CEP deve conter apenas números.'
   }
 
   // ninguém nasce no futuro — bloqueio de segurança além do `max` do input,
@@ -289,6 +339,7 @@ async function salvar() {
                   id="documento"
                   :value="documento.formatted.value"
                   :maxlength="18"
+                  inputmode="numeric"
                   placeholder="000.000.000-00"
                   class="h-10 w-full cursor-text rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                   :aria-invalid="!!erros.documento"
@@ -359,6 +410,7 @@ async function salvar() {
                 id="telefone"
                 :value="telefone.formatted.value"
                 :maxlength="15"
+                inputmode="numeric"
                 placeholder="(67) 99999-0000"
                 class="h-10 w-full cursor-text rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 :aria-invalid="!!erros.telefone"
@@ -404,10 +456,13 @@ async function salvar() {
                 id="cep"
                 :value="cep.formatted.value"
                 :maxlength="9"
+                inputmode="numeric"
                 placeholder="79000-000"
                 class="h-10 w-full cursor-text rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                :aria-invalid="!!erros.cep"
                 @input="cep.onInput"
               />
+              <p v-if="erros.cep" class="mt-1 text-xs text-destructive">{{ erros.cep }}</p>
             </div>
             <div>
               <label for="cidade" class="mb-1.5 block text-sm font-medium text-foreground">
