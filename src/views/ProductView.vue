@@ -38,8 +38,16 @@ onMounted(() => {
 })
 
 const PORPAGINA = 8
+const BUSCA_MAX = 60
 
-const busca = ref('')
+const buscaBruta = ref('')
+const busca = computed({
+  get: () => buscaBruta.value,
+  set: (valor) => {
+    buscaBruta.value = (valor ?? '').slice(0, BUSCA_MAX)
+  },
+})
+
 const grupo = ref('todos')
 const subgrupo = ref('todos')
 const marca = ref('todas')
@@ -53,6 +61,19 @@ const modalAberto = ref(false)
 const produtoEditando = ref(null)
 
 const { sucesso, info } = useFeedback()
+
+const TECLAS_PERMITIDAS = new Set([
+  'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  'Tab', 'Home', 'End', 'Enter', 'Escape', 'Shift', 'Control', 'Alt', 'Meta',
+])
+function bloquearExcedente(evento) {
+  if (TECLAS_PERMITIDAS.has(evento.key) || evento.ctrlKey || evento.metaKey || evento.altKey) {
+    return
+  }
+  if (busca.value.length >= BUSCA_MAX) {
+    evento.preventDefault()
+  }
+}
 
 function resetPag() {
   pagina.value = 1
@@ -129,7 +150,7 @@ function confirmarExclusao() {
     :trilha="[{ titulo: 'Gestão' }, { titulo: 'Produtos' }]"
   >
     <template #acoes>
-      <Button class="cursor-pointer" @click="abrirNovo">
+      <Button class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600" @click="abrirNovo">
         <Plus class="size-4" /> Novo produto
       </Button>
     </template>
@@ -149,17 +170,30 @@ function confirmarExclusao() {
 
     <Section>
       <div class="space-y-3 border-b border-border p-4 md:p-5">
-        <SearchField
-          v-model="busca"
-          label="Buscar produto por nome, código ou marca"
-          placeholder="Buscar por nome, código (SKU) ou marca…"
-          class="md:max-w-md"
-          @update:model-value="resetPag"
-        />
+        <div class="relative md:max-w-md" @keydown="bloquearExcedente">
+          <SearchField
+            v-model="busca"
+            label="Buscar produto por nome, código ou marca"
+            placeholder="Buscar por nome, código (SKU) ou marca…"
+            class="w-full"
+            :maxlength="BUSCA_MAX"
+            @update:model-value="resetPag"
+          />
+          <span
+            class="pointer-events-none absolute right-3 top-1/2 z-10 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
+            :class="busca.length >= BUSCA_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+          >
+            {{ busca.length }}/{{ BUSCA_MAX }}
+          </span>
+        </div>
 
-        <div class="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        <!-- Filtros: uma única linha, com scroll horizontal no mobile -->
+        <div class="flex gap-2 overflow-x-auto pb-1 md:overflow-visible md:flex-nowrap">
           <Select :model-value="grupo" @update:model-value="onGrupoChange">
-            <SelectTrigger class="h-10 cursor-pointer bg-surface" aria-label="Filtrar por grupo">
+            <SelectTrigger
+              class="h-10 w-[150px] shrink-0 cursor-pointer bg-surface md:w-auto md:min-w-0 md:flex-1"
+              aria-label="Filtrar por grupo"
+            >
               <SelectValue placeholder="Grupo" />
             </SelectTrigger>
             <SelectContent>
@@ -171,7 +205,10 @@ function confirmarExclusao() {
           </Select>
 
           <Select v-model="subgrupo" @update:model-value="resetPag">
-            <SelectTrigger class="h-10 cursor-pointer bg-surface" aria-label="Filtrar por subgrupo">
+            <SelectTrigger
+              class="h-10 w-[150px] shrink-0 cursor-pointer bg-surface md:w-auto md:min-w-0 md:flex-1"
+              aria-label="Filtrar por subgrupo"
+            >
               <SelectValue placeholder="Subgrupo" />
             </SelectTrigger>
             <SelectContent>
@@ -188,7 +225,10 @@ function confirmarExclusao() {
           </Select>
 
           <Select v-model="marca" @update:model-value="resetPag">
-            <SelectTrigger class="h-10 cursor-pointer bg-surface" aria-label="Filtrar por marca">
+            <SelectTrigger
+              class="h-10 w-[150px] shrink-0 cursor-pointer bg-surface md:w-auto md:min-w-0 md:flex-1"
+              aria-label="Filtrar por marca"
+            >
               <SelectValue placeholder="Marca" />
             </SelectTrigger>
             <SelectContent>
@@ -200,7 +240,10 @@ function confirmarExclusao() {
           </Select>
 
           <Select v-model="estoque" @update:model-value="resetPag">
-            <SelectTrigger class="h-10 cursor-pointer bg-surface" aria-label="Filtrar por estoque">
+            <SelectTrigger
+              class="h-10 w-[150px] shrink-0 cursor-pointer bg-surface md:w-auto md:min-w-0 md:flex-1"
+              aria-label="Filtrar por estoque"
+            >
               <SelectValue placeholder="Estoque" />
             </SelectTrigger>
             <SelectContent>
@@ -212,7 +255,10 @@ function confirmarExclusao() {
           </Select>
 
           <Select v-model="status" @update:model-value="resetPag">
-            <SelectTrigger class="h-10 cursor-pointer bg-surface" aria-label="Filtrar por situação">
+            <SelectTrigger
+              class="h-10 w-[150px] shrink-0 cursor-pointer bg-surface md:w-auto md:min-w-0 md:flex-1"
+              aria-label="Filtrar por situação"
+            >
               <SelectValue placeholder="Situação" />
             </SelectTrigger>
             <SelectContent>
@@ -232,7 +278,9 @@ function confirmarExclusao() {
         descricao="Ajuste os filtros ou cadastre um novo produto para começar a controlar o estoque."
       >
         <template #acao>
-          <Button class="cursor-pointer" @click="abrirNovo">Cadastrar produto</Button>
+          <Button class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600" @click="abrirNovo">
+            Cadastrar produto
+          </Button>
         </template>
       </EmptyState>
 
@@ -243,7 +291,7 @@ function confirmarExclusao() {
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-                <p class="text-meta truncate">{{ p.sku }} · {{ p.grupo }} / {{ p.subgrupo }}</p>
+                <p class="truncate text-xs text-muted-foreground">{{ p.sku }} · {{ p.grupo }} / {{ p.subgrupo }}</p>
               </div>
               <span class="shrink-0 text-sm font-semibold">{{ brl(p.preco) }}</span>
             </div>
@@ -252,7 +300,7 @@ function confirmarExclusao() {
               <StatusPill :tom="p.status === 'ativo' ? 'info' : 'neutral'">
                 {{ p.status === 'ativo' ? 'Ativo' : 'Inativo' }}
               </StatusPill>
-              <span class="text-meta">{{ p.marca }}</span>
+              <span class="text-xs text-muted-foreground">{{ p.marca }}</span>
             </div>
           </li>
         </ul>
@@ -260,7 +308,7 @@ function confirmarExclusao() {
         <!-- Desktop: tabela -->
         <div class="hidden overflow-x-auto md:block">
           <table class="w-full text-sm">
-            <thead class="text-meta">
+            <thead class="text-xs text-muted-foreground">
               <tr class="border-b border-border text-left">
                 <th class="px-5 py-3 font-medium">Produto</th>
                 <th class="px-4 py-3 font-medium">Grupo / Subgrupo</th>
@@ -272,10 +320,10 @@ function confirmarExclusao() {
               </tr>
             </thead>
             <tbody class="divide-y divide-border">
-              <tr v-for="p in visiveis" :key="p.id" class="transition-colors hover:bg-surface-2/60">
+              <tr v-for="p in visiveis" :key="p.id" class="transition-colors hover:bg-muted/60">
                 <td class="max-w-[260px] px-5 py-3">
                   <p class="truncate font-medium">{{ p.nome }}</p>
-                  <p class="text-meta">{{ p.sku }}</p>
+                  <p class="truncate text-xs text-muted-foreground">{{ p.sku }}</p>
                 </td>
                 <td class="px-4 py-3 text-muted-foreground">{{ p.grupo }} / {{ p.subgrupo }}</td>
                 <td class="px-4 py-3 text-muted-foreground">{{ p.marca }}</td>
@@ -311,7 +359,7 @@ function confirmarExclusao() {
         </div>
 
         <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5">
-          <p class="text-meta">
+          <p class="text-xs text-muted-foreground">
             {{ filtrados.length }} produto(s) · página {{ paginaAtual }} de {{ totalPaginas }}
           </p>
           <div class="flex gap-2">
