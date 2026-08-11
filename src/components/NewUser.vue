@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { z } from 'zod'
-import { Check, X } from 'lucide-vue-next'
+import { AlertTriangle, Check, Eye, EyeOff, Loader2, X } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -32,7 +32,11 @@ const emit = defineEmits(['update:open', 'created', 'updated'])
 const { erro } = useFeedback()
 const salvando = ref(false)
 
-// ---- Limites de Caracteres ----
+// Visibilidade de Senhas
+const mostrarSenha = ref(false)
+const mostrarConfirmarSenha = ref(false)
+
+// Limites de Caracteres
 const NOME_MAX = 60
 const EMAIL_MAX = 80
 const SENHA_MAX = 32
@@ -51,7 +55,7 @@ function bloquearExcedente(evento, valorAtual, maximo) {
   }
 }
 
-// ---- Formulário ----
+// Formulário
 const formUsuario = ref({
   id: null,
   nome: '',
@@ -62,28 +66,49 @@ const formUsuario = ref({
   ativo: true,
 })
 
-// Maxlength dinâmico via computed com setters
+// Erros de Validação por Campo
+const erros = ref({
+  nome: '',
+  email: '',
+  senha: '',
+  confirmarSenha: '',
+})
+
+// Maxlength via computed com setters
 const nomeBruto = computed({
   get: () => formUsuario.value.nome,
-  set: (val) => { formUsuario.value.nome = (val ?? '').slice(0, NOME_MAX) },
+  set: (val) => {
+    formUsuario.value.nome = (val ?? '').slice(0, NOME_MAX)
+    validarCampo('nome')
+  },
 })
 
 const emailBruto = computed({
   get: () => formUsuario.value.email,
-  set: (val) => { formUsuario.value.email = (val ?? '').slice(0, EMAIL_MAX) },
+  set: (val) => {
+    formUsuario.value.email = (val ?? '').slice(0, EMAIL_MAX)
+    validarCampo('email')
+  },
 })
 
 const senhaBruta = computed({
   get: () => formUsuario.value.senha,
-  set: (val) => { formUsuario.value.senha = (val ?? '').slice(0, SENHA_MAX) },
+  set: (val) => {
+    formUsuario.value.senha = (val ?? '').slice(0, SENHA_MAX)
+    validarCampo('senha')
+    if (formUsuario.value.confirmarSenha) validarCampo('confirmarSenha')
+  },
 })
 
 const confirmarSenhaBruta = computed({
   get: () => formUsuario.value.confirmarSenha,
-  set: (val) => { formUsuario.value.confirmarSenha = (val ?? '').slice(0, SENHA_MAX) },
+  set: (val) => {
+    formUsuario.value.confirmarSenha = (val ?? '').slice(0, SENHA_MAX)
+    validarCampo('confirmarSenha')
+  },
 })
 
-// ---- Validação de Senha Forte em Tempo Real ----
+// Validação de Senha Forte em Tempo Real
 const criteriosSenha = computed(() => {
   const val = formUsuario.value.senha || ''
   return {
@@ -114,22 +139,31 @@ const forcaSenhaCor = computed(() => {
   return 'bg-emerald-500'
 })
 
-// ---- Schema Zod ----
+// Feedback Visual de Coincidência de Senhas
+const statusCoincidenciaSenhas = computed(() => {
+  const s = formUsuario.value.senha
+  const cs = formUsuario.value.confirmarSenha
+
+  if (!cs) return null
+  if (s === cs) return { ok: true, texto: 'As senhas coincidem' }
+  return { ok: false, texto: 'As senhas não coincidem' }
+})
+
+// Schema Zod
 const usuarioSchema = z.object({
-  nome: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
-  email: z.string().email('Informe um e-mail válido.'),
+  nome: z.string().min(3, 'Nome muito curto (mínimo 3 caracteres).'),
+  email: z.string().min(1, 'E-mail é obrigatório.').email('E-mail inválido.'),
   cargo: z.string().min(1, 'Selecione um cargo.'),
   senha: z.string().optional(),
   confirmarSenha: z.string().optional(),
 }).superRefine((data, ctx) => {
-  const IS_NOVO = !props.usuario
+  const isNovo = !props.usuario
 
-  // Se for novo usuário ou se digitou senha na edição
-  if (IS_NOVO || data.senha) {
+  if (isNovo || data.senha) {
     if (!data.senha) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Informe uma senha.',
+        message: 'Senha é obrigatória.',
         path: ['senha'],
       })
       return
@@ -146,7 +180,7 @@ const usuarioSchema = z.object({
     if (!tamanho || !maiuscula || !minuscula || !numero || !especial) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'A senha deve atender a todos os requisitos de segurança.',
+        message: 'Senha fraca ou inválida.',
         path: ['senha'],
       })
     }
@@ -154,11 +188,29 @@ const usuarioSchema = z.object({
     if (data.senha !== data.confirmarSenha) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'As senhas não coincidem.',
+        message: 'Senhas diferentes.',
         path: ['confirmarSenha'],
       })
     }
   }
+})
+
+// Validação em Tempo Real de Campos Individuais
+function validarCampo(campo) {
+  const res = usuarioSchema.safeParse(formUsuario.value)
+  if (res.success) {
+    erros.value[campo] = ''
+    return
+  }
+
+  const issue = res.error.issues.find((i) => i.path[0] === campo)
+  erros.value[campo] = issue ? issue.message : ''
+}
+
+// Validação Geral do Formulário para Ativar/Desativar o Botão
+const formularioValido = computed(() => {
+  const res = usuarioSchema.safeParse(formUsuario.value)
+  return res.success
 })
 
 function resetarFormulario() {
@@ -171,6 +223,9 @@ function resetarFormulario() {
     confirmarSenha: '',
     ativo: true,
   }
+  erros.value = { nome: '', email: '', senha: '', confirmarSenha: '' }
+  mostrarSenha.value = false
+  mostrarConfirmarSenha.value = false
 }
 
 watch(
@@ -187,6 +242,7 @@ watch(
           confirmarSenha: '',
           ativo: props.usuario.status === 'ativo',
         }
+        erros.value = { nome: '', email: '', senha: '', confirmarSenha: '' }
       } else {
         resetarFormulario()
       }
@@ -195,16 +251,18 @@ watch(
 )
 
 function fecharModal() {
+  if (salvando.value) return
   emit('update:open', false)
 }
 
 function salvarUsuario() {
-  // Validação via Zod
-  const resultado = usuarioSchema.safeParse(formUsuario.value)
+  const res = usuarioSchema.safeParse(formUsuario.value)
 
-  if (!resultado.success) {
-    const primeiraMensagem = resultado.error.issues[0]?.message || 'Verifique os campos do formulário.'
-    erro(primeiraMensagem)
+  if (!res.success) {
+    res.error.issues.forEach((i) => {
+      if (i.path[0]) erros.value[i.path[0]] = i.message
+    })
+    erro('Preencha os campos corretamente.')
     return
   }
 
@@ -229,12 +287,12 @@ function salvarUsuario() {
 
     salvando.value = false
     fecharModal()
-  }, 500)
+  }, 600)
 }
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
+  <Dialog :open="open" @update:open="(v) => !salvando && emit('update:open', v)">
     <DialogContent class="sm:max-w-[520px] p-6">
       <DialogHeader class="space-y-1">
         <DialogTitle class="text-xl font-semibold tracking-tight">
@@ -254,8 +312,8 @@ function salvarUsuario() {
               v-model="nomeBruto"
               type="text"
               placeholder="Ex: João da Silva"
+              :class="erros.nome ? 'border-destructive focus-visible:ring-destructive' : ''"
               required
-              class="pr-14"
             />
             <span
               class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
@@ -264,6 +322,7 @@ function salvarUsuario() {
               {{ nomeBruto.length }}/{{ NOME_MAX }}
             </span>
           </div>
+          <p v-if="erros.nome" class="text-xs text-destructive font-medium">{{ erros.nome }}</p>
         </div>
 
         <div class="space-y-1.5">
@@ -274,8 +333,8 @@ function salvarUsuario() {
               v-model="emailBruto"
               type="email"
               placeholder="joao@empresa.com"
+              :class="erros.email ? 'border-destructive focus-visible:ring-destructive' : ''"
               required
-              class="pr-14"
             />
             <span
               class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
@@ -284,6 +343,7 @@ function salvarUsuario() {
               {{ emailBruto.length }}/{{ EMAIL_MAX }}
             </span>
           </div>
+          <p v-if="erros.email" class="text-xs text-destructive font-medium">{{ erros.email }}</p>
         </div>
 
         <div class="space-y-1.5">
@@ -309,18 +369,21 @@ function salvarUsuario() {
               <Input
                 id="senha"
                 v-model="senhaBruta"
-                type="password"
+                :type="mostrarSenha ? 'text' : 'password'"
                 placeholder="••••••••"
+                :class="['pr-10', erros.senha ? 'border-destructive focus-visible:ring-destructive' : '']"
                 :required="!usuario"
-                class="pr-14"
               />
-              <span
-                class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
-                :class="senhaBruta.length >= SENHA_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+              <button
+                type="button"
+                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground cursor-pointer transition-colors"
+                :aria-label="mostrarSenha ? 'Ocultar senha' : 'Exibir senha'"
+                @click="mostrarSenha = !mostrarSenha"
               >
-                {{ senhaBruta.length }}/{{ SENHA_MAX }}
-              </span>
+                <component :is="mostrarSenha ? EyeOff : Eye" class="size-4" />
+              </button>
             </div>
+            <p v-if="erros.senha" class="text-xs text-destructive font-medium">{{ erros.senha }}</p>
           </div>
 
           <div class="space-y-1.5">
@@ -331,29 +394,46 @@ function salvarUsuario() {
               <Input
                 id="confirmarSenha"
                 v-model="confirmarSenhaBruta"
-                type="password"
+                :type="mostrarConfirmarSenha ? 'text' : 'password'"
                 placeholder="••••••••"
+                :class="['pr-10', erros.confirmarSenha ? 'border-destructive focus-visible:ring-destructive' : '']"
                 :required="!usuario"
-                class="pr-14"
               />
-              <span
-                class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
-                :class="confirmarSenhaBruta.length >= SENHA_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+              <button
+                type="button"
+                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground cursor-pointer transition-colors"
+                :aria-label="mostrarConfirmarSenha ? 'Ocultar senha' : 'Exibir senha'"
+                @click="mostrarConfirmarSenha = !mostrarConfirmarSenha"
               >
-                {{ confirmarSenhaBruta.length }}/{{ SENHA_MAX }}
-              </span>
+                <component :is="mostrarConfirmarSenha ? EyeOff : Eye" class="size-4" />
+              </button>
             </div>
+            <p v-if="erros.confirmarSenha" class="text-xs text-destructive font-medium">{{ erros.confirmarSenha }}</p>
           </div>
+        </div>
+
+        <div v-if="statusCoincidenciaSenhas" class="text-xs font-medium flex items-center gap-1.5 transition-all">
+          <template v-if="statusCoincidenciaSenhas.ok">
+            <Check class="size-3.5 text-emerald-500" />
+            <span class="text-emerald-500">{{ statusCoincidenciaSenhas.texto }}</span>
+          </template>
+          <template v-else>
+            <AlertTriangle class="size-3.5 text-amber-500" />
+            <span class="text-amber-500">{{ statusCoincidenciaSenhas.texto }}</span>
+          </template>
         </div>
 
         <div v-if="formUsuario.senha" class="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
           <div class="flex items-center justify-between text-xs">
             <span class="text-muted-foreground">Força da senha:</span>
-            <span class="font-medium" :class="{
-              'text-red-500': pontosSenha <= 2,
-              'text-amber-500': pontosSenha > 2 && pontosSenha <= 4,
-              'text-emerald-500': pontosSenha === 5
-            }">
+            <span
+              class="font-medium"
+              :class="{
+                'text-red-500': pontosSenha <= 2,
+                'text-amber-500': pontosSenha > 2 && pontosSenha <= 4,
+                'text-emerald-500': pontosSenha === 5
+              }"
+            >
               {{ forcaSenhaTexto }}
             </span>
           </div>
@@ -392,15 +472,21 @@ function salvarUsuario() {
         </div>
 
         <DialogFooter class="pt-4 flex gap-2 justify-end border-t border-border mt-6">
-          <Button type="button" variant="outline" class="cursor-pointer" @click="fecharModal">
+          <Button type="button" variant="outline" class="cursor-pointer" :disabled="salvando" @click="fecharModal">
             Cancelar
           </Button>
           <Button
             type="submit"
-            :disabled="salvando"
-            class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed"
+            :disabled="!formularioValido || salvando"
+            class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed min-w-[140px]"
           >
-            {{ salvando ? 'Salvando...' : usuario ? 'Salvar alterações' : 'Cadastrar usuário' }}
+            <template v-if="salvando">
+              <Loader2 class="size-4 animate-spin mr-2" />
+              {{ usuario ? 'Salvando...' : 'Cadastrando...' }}
+            </template>
+            <template v-else>
+              {{ usuario ? 'Salvar alterações' : 'Cadastrar usuário' }}
+            </template>
           </Button>
         </DialogFooter>
       </form>
