@@ -33,8 +33,8 @@ import { Label } from '@/components/ui/label'
 
 import EmptyState from '@/components/page-shell/EmptyState.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
-import NewPerson from '@/components/NewPerson.vue'
-import NewProduct from '@/components/NewProduct.vue'
+import NewPerson from '@/components/modal/person/NewPerson.vue'
+import NewProduct from '@/components/modal/product/NewProduct.vue'
 
 import { useFeedback } from '@/composables/useFeedBack'
 import { brl, nivelEstoque, pessoas, produtos } from '@/lib/mockData'

@@ -33,7 +33,7 @@ import EmptyState from '@/components/page-shell/EmptyState.vue'
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
-import GroupModal from '@/components/NewGroup.vue'
+import GroupModal from '@/components/modal/group/NewGroup.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 import { grupos as mockGrupos } from '@/lib/mockDataProdutos'
 

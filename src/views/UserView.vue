@@ -21,7 +21,7 @@ import EmptyState from '@/components/page-shell/EmptyState.vue'
 import TableSkeleton from '@/components/page-shell/TableSkeleton.vue'
 import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
-import UserModal from '@/components/NewUser.vue'
+import UserModal from '@/components/modal/user/NewUser.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 
 import { Button } from '@/components/ui/button'

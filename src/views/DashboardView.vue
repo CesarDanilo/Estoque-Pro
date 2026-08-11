@@ -18,7 +18,9 @@ import Section from '@/components/page-shell/Section.vue'
 import MetricCard from '@/components/ui-kit/MetricCard.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import { Button } from '@/components/ui/button'
-import NewProduct from '@/components/NewProduct.vue'
+import NewProduct from '@/components/modal/product/NewProduct.vue'
+import NewSale from '@/components/modal/sale/NewSale.vue' // Importação do modal de vendas
+
 import {
   brl,
   compras,
@@ -60,25 +62,32 @@ const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0 && p
 
 const atencao = computed(() => [...semEstoque.value, ...baixos.value])
 
-// estado do modal de edição de produto, aberto a partir de "Precisa da sua atenção"
-// e agora também a partir de "Mais vendidos (30 dias)"
+// ---------- Estados dos Modais ----------
 const modalProdutoAberto = ref(false)
 const produtoSelecionado = ref(null)
+const modalVendaAberto = ref(false)
 
 function abrirEdicaoProduto(produto) {
   produtoSelecionado.value = produto
   modalProdutoAberto.value = true
 }
 
+function abrirModalVenda() {
+  modalVendaAberto.value = true
+}
+
 function onProdutoSalvo(dadosAtualizados) {
-  // Atualiza os campos do produto na lista local (mock).
-  // Se os dados vierem de uma API depois, troque por um refetch aqui.
   const alvo = produtos.find((p) => p.id === produtoSelecionado.value?.id)
   if (alvo) Object.assign(alvo, dadosAtualizados)
 }
 
-// ---------- Atividades recentes: todas as movimentações, mais recentes primeiro ----------
-// mantém o id original de cada entidade (venda/compra) para poder linkar pra tela certa
+function onVendaSalva(novaVenda) {
+  if (novaVenda) {
+    vendas.unshift(novaVenda)
+  }
+}
+
+// ---------- Atividades recentes ----------
 const atividades = computed(() =>
   [
     ...vendas.map((v) => ({
@@ -102,7 +111,7 @@ function rotaAtividade(a) {
   return a.tipo === 'saida' ? `/vendas/${a.id}` : `/compras/${a.id}`
 }
 
-// ---------- Gráfico: vendas x compras por dia (Line/Area) ----------
+// ---------- Gráficos ----------
 const chartDataVendasCompras = computed(() => ({
   labels: vendasPorDia.map((d) => d.dia),
   datasets: [
@@ -164,9 +173,6 @@ const chartOptionsVendasCompras = {
   },
 }
 
-// ---------- Gráfico: vendas por grupo (Bar horizontal, com rolagem) ----------
-// altura cresce com a quantidade de grupos/marcas; o container de fora
-// (max-h-72 overflow-y-auto) é quem cria a barra de rolagem quando passar disso
 const ALTURA_POR_BARRA = 40
 const ALTURA_MINIMA_GRAFICO = 260
 
@@ -218,10 +224,12 @@ const chartOptionsGrupo = {
           <ShoppingCart class="size-4" /> Nova compra
         </RouterLink>
       </Button>
-      <Button as-child class="bg-emerald-500 text-black hover:bg-emerald-600" variant="primary">
-        <RouterLink to="/vendas/nova">
-          <Plus class="size-4" /> Nova venda
-        </RouterLink>
+      <Button
+        class="bg-emerald-500 text-black hover:bg-emerald-600 cursor-pointer"
+        variant="primary"
+        @click="abrirModalVenda"
+      >
+        <Plus class="size-4" /> Nova venda
       </Button>
     </template>
   </PageHeader>
@@ -275,7 +283,6 @@ const chartOptionsGrupo = {
         </Button>
       </template>
 
-      <!-- max-h + overflow-y-auto garante rolagem quando a lista tiver muitos produtos -->
       <ul class="max-h-72 divide-y divide-border overflow-y-auto">
         <li v-for="p in atencao" :key="p.id">
           <button
@@ -325,7 +332,6 @@ const chartOptionsGrupo = {
           </Button>
         </template>
 
-        <!-- 🔴 AQUI — trocado RouterLink por button, abre o modal de edição em vez de navegar -->
         <ul class="max-h-72 divide-y divide-border overflow-y-auto">
           <li v-for="(p, i) in maisVendidos" :key="p.id">
             <button
@@ -385,10 +391,14 @@ const chartOptionsGrupo = {
     </Section>
   </div>
 
-  <!-- modal de edição, aberto ao clicar em um item de "Precisa da sua atenção" ou "Mais vendidos" -->
   <NewProduct
     v-model:open="modalProdutoAberto"
     :produto="produtoSelecionado"
     @salvo="onProdutoSalvo"
+  />
+
+  <NewSale
+    v-model:open="modalVendaAberto"
+    @salvo="onVendaSalva"
   />
 </template>

@@ -35,7 +35,7 @@ import EmptyState from '@/components/page-shell/EmptyState.vue'
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
-import SupplierModal from '@/components/NewSupplier.vue'
+import SupplierModal from '@/components/modal/supplier/NewSupplier.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 import { fornecedores as mockFornecedores } from '@/lib/mockDataProdutos'
 

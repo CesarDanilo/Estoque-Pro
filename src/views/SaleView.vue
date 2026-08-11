@@ -15,7 +15,7 @@ import TableSkeleton from '@/components/page-shell/TableSkeleton.vue'
 import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import MetricCard from '@/components/ui-kit/MetricCard.vue'
-import NewSale from '@/components/NewSale.vue'
+import NewSale from '@/components/modal/sale/NewSale.vue'
 
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'

@@ -8,7 +8,7 @@ import Section from '@/components/page-shell/Section.vue'
 import EmptyState from '@/components/page-shell/EmptyState.vue'
 import FieldLabel from '@/components/ui-kit/FieldLabel.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
-import NewSupplier from '@/components/NewSupplier.vue'
+import NewSupplier from '@/components/modal/supplier/NewSupplier.vue'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

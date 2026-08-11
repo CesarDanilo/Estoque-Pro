@@ -9,7 +9,7 @@ import TableSkeleton from '@/components/page-shell/TableSkeleton.vue'
 import MetricCard from '@/components/ui-kit/MetricCard.vue'
 import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
-import NewProduct from '@/components/NewProduct.vue'
+import NewProduct from '@/components/modal/product/NewProduct.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 
 import { Button } from '@/components/ui/button'
