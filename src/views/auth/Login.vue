@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel.vue'
 import { useFeedback } from '@/composables/useFeedBack'
+import { login } from '@/services/auth'
 
 const router = useRouter()
 const { sucesso } = useFeedback()
@@ -91,15 +92,7 @@ async function entrar() {
   carregando.value = true
   erroLogin.value = ''
   try {
-    // 🔴 AQUI: substitua pela chamada real de autenticação, ex:
-    // const { data } = await api.post('/auth/login', { email: form.email, senha: form.senha })
-    // localStorage.setItem('estoquepro:token', data.token)
-    await new Promise((resolve, reject) =>
-      setTimeout(() => {
-        if (form.senha.length >= 6) resolve()
-        else reject(new Error('credenciais'))
-      }, 900)
-    )
+    await login({ email: form.email, senha: form.senha })
 
     // "Lembrar meu e-mail" — funcional: só grava/mantém se o checkbox estiver marcado
     if (form.lembrar) {
@@ -110,8 +103,12 @@ async function entrar() {
 
     sucesso('Bem-vindo de volta', 'Login realizado com sucesso.')
     router.push('/')
-  } catch {
-    erroLogin.value = 'E-mail ou senha incorretos. Verifique os dados e tente novamente.'
+  } catch (erro) {
+    if (erro.response?.status === 422) {
+      erroLogin.value = 'E-mail ou senha incorretos. Verifique os dados e tente novamente.'
+    } else {
+      erroLogin.value = 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+    }
   } finally {
     carregando.value = false
   }

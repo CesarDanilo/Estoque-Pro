@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel.vue'
 import { useFeedback } from '@/composables/useFeedBack'
+import { registrar } from '@/services/auth'
 
 const router = useRouter()
 const { sucesso } = useFeedback()
@@ -168,17 +169,17 @@ async function cadastrar() {
   carregando.value = true
   erroCadastro.value = ''
   try {
-    // 🔴 AQUI: substitua pela chamada real de cadastro, ex:
-    // const { data } = await api.post('/auth/cadastro', {
-    //   nome: form.nome, email: form.email, senha: form.senha,
-    // })
-    // localStorage.setItem('estoquepro:token', data.token)
-    await new Promise((resolve) => setTimeout(resolve, 900))
+    await registrar({ nome: form.nome, email: form.email, senha: form.senha })
 
     sucesso('Conta criada', 'Seu cadastro foi realizado com sucesso.')
     router.push('/')
-  } catch {
-    erroCadastro.value = 'Não foi possível criar sua conta. Tente novamente em instantes.'
+  } catch (erro) {
+    if (erro.response?.status === 422) {
+      const primeiroErro = Object.values(erro.response.data.errors ?? {})[0]?.[0]
+      erroCadastro.value = primeiroErro || 'Verifique os dados informados e tente novamente.'
+    } else {
+      erroCadastro.value = 'Não foi possível criar sua conta. Tente novamente em instantes.'
+    }
   } finally {
     carregando.value = false
   }
