@@ -176,7 +176,12 @@ async function cadastrar() {
   } catch (erro) {
     if (erro.response?.status === 422) {
       const primeiroErro = Object.values(erro.response.data.errors ?? {})[0]?.[0]
-      erroCadastro.value = primeiroErro || 'Verifique os dados informados e tente novamente.'
+      console.log('Erro de validação do backend:', primeiroErro)
+      if (primeiroErro == "The email has already been taken.") {
+        erroCadastro.value = 'Este e-mail já está em uso. Tente outro ou faça login.'
+      }else {
+        erroCadastro.value = primeiroErro || 'Verifique os dados informados e tente novamente.'
+      }
     } else {
       erroCadastro.value = 'Não foi possível criar sua conta. Tente novamente em instantes.'
     }
@@ -380,7 +385,7 @@ onMounted(() => {
 
           <div class="space-y-1">
             <div class="flex items-start gap-2">
-              <Checkbox id="termos" v-model:checked="form.aceitaTermos" class="mt-0.5 cursor-pointer" @update:checked="limparErro('aceitaTermos')" />
+              <Checkbox id="termos" v-model="form.aceitaTermos" class="mt-0.5 cursor-pointer" @update:model-value="limparErro('aceitaTermos')" />
               <Label for="termos" class="cursor-pointer text-sm font-normal leading-snug text-muted-foreground">
                 Li e aceito os
                 <a href="/termos" class="text-emerald-500 hover:text-emerald-400">Termos de uso</a>
