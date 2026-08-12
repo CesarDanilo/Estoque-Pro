@@ -1,7 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   ArrowUpRight,
+  ExternalLink,
   Loader2,
   Minus,
   PackagePlus,
@@ -28,8 +30,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 
 import EmptyState from '@/components/page-shell/EmptyState.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
@@ -47,6 +47,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:open', 'created'])
 
+const router = useRouter()
 const { sucesso, erro } = useFeedback()
 
 // Composables para carregar dados do Backend/Store
@@ -58,13 +59,14 @@ const {
   atualizarParcial: atualizarParcialPessoa,
 } = usePeople()
 
-// Mapeado refetch como buscarProdutos para manter compatibilidade com o TanStack Query
 const { produtos, refetch: buscarProdutos, criar: criarProduto } = useProducts()
 const { createSale, isCreating } = useSales()
 
+// Valor especial reservado para venda avulsa/sem cliente
+const ID_SEM_CLIENTE = 'sem_cliente'
+
 // Estados da Venda
-const clienteId = ref('')
-const semCliente = ref(false)
+const clienteId = ref(ID_SEM_CLIENTE)
 const buscaCliente = ref('')
 const buscaBruta = ref('')
 const itens = ref([])
@@ -278,18 +280,8 @@ const total = computed(() => {
   return Math.max(0, safeNumber(res))
 })
 
-const temClienteValido = computed(() => {
-  if (Boolean(semCliente.value) === true) return true
-  return Boolean(clienteId.value && String(clienteId.value).trim() !== '')
-})
-
-watch(semCliente, (marcado) => {
-  if (marcado) clienteId.value = ''
-})
-
 function resetar() {
-  clienteId.value = ''
-  semCliente.value = false
+  clienteId.value = ID_SEM_CLIENTE
   buscaCliente.value = ''
   buscaBruta.value = ''
   itens.value = []
@@ -327,7 +319,6 @@ function adicionar(id) {
       estoque: qtdEstoque,
     })
   }
-  busca.value = ''
 }
 
 function remover(id) {
@@ -342,26 +333,38 @@ function aumentar(item) {
   item.qtd = Math.min(item.estoque, item.qtd + 1)
 }
 
+function irParaTelaProdutos() {
+  fechar()
+  router.push('/produtos')
+}
+
 // ---- Callbacks dos Modais de Cadastro ----
 async function pessoaCriada(novaPessoa) {
-  sucesso(
-    'Cliente cadastrado',
-    `${novaPessoa.nome || novaPessoa.name} já está selecionado nesta venda.`,
-  )
+  const pessoaObj = novaPessoa?.data || novaPessoa
+  const idExtraido = pessoaObj?.id
+  const nomeExtraido = pessoaObj?.nome || pessoaObj?.name || 'Cliente'
+
+  sucesso('Cliente cadastrado', `${nomeExtraido} selecionado nesta venda.`)
+
   if (typeof buscarPessoas === 'function') {
     await buscarPessoas({ type: 'todos', active: 'ativo' })
   }
-  clienteId.value = String(novaPessoa.id)
-  semCliente.value = false
+
+  if (idExtraido) {
+    clienteId.value = String(idExtraido)
+  }
 }
 
 async function produtoCriado(novoProduto) {
+  const prodObj = novoProduto?.data || novoProduto
   sucesso('Produto cadastrado', 'Produto adicionado ao carrinho.')
+
   if (typeof buscarProdutos === 'function') {
     await buscarProdutos()
   }
-  if (novoProduto?.id) {
-    adicionar(novoProduto.id)
+
+  if (prodObj?.id) {
+    adicionar(prodObj.id)
   }
 }
 
@@ -373,11 +376,8 @@ function fechar() {
 async function finalizar() {
   if (isCreating.value) return
 
-  if (!temClienteValido.value) {
-    erro(
-      'Cliente não informado',
-      'Selecione um cliente ou marque "Venda sem cliente identificado".',
-    )
+  if (!clienteId.value) {
+    erro('Cliente não informado', 'Selecione um cliente ou escolha a opção de Venda Avulsa.')
     return
   }
 
@@ -393,7 +393,7 @@ async function finalizar() {
 
   try {
     const payload = {
-      person_id: semCliente.value ? null : clienteId.value,
+      person_id: clienteId.value === ID_SEM_CLIENTE ? null : clienteId.value,
       payment_method: pagamento.value,
       discount_value: valorDescontoAplicado.value,
       discount_percentage: descontoPercentualPreenchido.value
@@ -426,28 +426,30 @@ async function finalizar() {
 
 <template>
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
-    <DialogContent class="w-[950px] max-w-[95vw] overflow-y-auto p-8 sm:max-w-[950px]">
-      <DialogHeader class="space-y-1">
+    <DialogContent class="flex max-h-[90vh] flex-col w-[950px] max-w-[95vw] p-8 sm:max-w-[950px]">
+      <DialogHeader class="space-y-1 shrink-0">
         <DialogTitle class="text-xl font-semibold tracking-tight">Nova venda</DialogTitle>
         <DialogDescription class="text-sm text-muted-foreground">
           Ao finalizar, o estoque dos produtos vendidos é reduzido.
         </DialogDescription>
       </DialogHeader>
 
-      <form class="space-y-6 pt-1" @submit.prevent="finalizar">
-        <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div class="space-y-6">
+      <form
+        class="flex min-h-0 flex-1 flex-col justify-between space-y-6 pt-1"
+        @submit.prevent="finalizar"
+      >
+        <div class="grid flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div class="flex flex-col space-y-6 overflow-y-auto pr-1">
             <section class="space-y-3">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 1. Cliente
               </h3>
               <div>
                 <label for="cliente" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Para quem é a venda?
-                  <span v-if="!semCliente" class="text-destructive">*</span>
+                  Para quem é a venda? <span class="text-destructive">*</span>
                 </label>
                 <div class="flex gap-2">
-                  <Select v-model="clienteId" :disabled="semCliente">
+                  <Select v-model="clienteId">
                     <SelectTrigger
                       id="cliente"
                       class="h-10 w-full cursor-pointer bg-surface disabled:cursor-not-allowed disabled:opacity-50"
@@ -471,8 +473,15 @@ async function finalizar() {
                       </div>
 
                       <div class="max-h-[200px] overflow-y-auto pt-1">
+                        <SelectItem
+                          :value="ID_SEM_CLIENTE"
+                          class="cursor-pointer font-medium text-primary"
+                        >
+                          Venda sem cliente (Avulsa)
+                        </SelectItem>
+
                         <p
-                          v-if="clientesAtivos.length === 0"
+                          v-if="clientesAtivos.length === 0 && buscaCliente.trim() !== ''"
                           class="p-2 text-center text-xs text-muted-foreground"
                         >
                           Nenhum cliente encontrado.
@@ -495,26 +504,10 @@ async function finalizar() {
                     size="icon"
                     class="h-10 w-10 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="Cadastrar novo cliente"
-                    :disabled="semCliente"
                     @click="pessoaModalAberto = true"
                   >
                     <UserPlus class="size-4" />
                   </Button>
-                </div>
-
-                <div class="mt-2 flex items-center gap-2">
-                  <Checkbox
-                    id="sem-cliente"
-                    :checked="semCliente"
-                    @update:checked="(v) => (semCliente = Boolean(v))"
-                    class="cursor-pointer"
-                  />
-                  <Label
-                    for="sem-cliente"
-                    class="cursor-pointer text-sm font-normal text-muted-foreground"
-                  >
-                    Venda sem cliente identificado
-                  </Label>
                 </div>
               </div>
             </section>
@@ -570,7 +563,7 @@ async function finalizar() {
 
               <ul
                 v-if="disponiveis.length > 0"
-                class="max-h-[180px] divide-y divide-border overflow-y-auto rounded-lg border border-border"
+                class="max-h-[160px] divide-y divide-border overflow-y-auto rounded-lg border border-border"
               >
                 <li
                   v-for="(p, idx) in disponiveis"
@@ -601,11 +594,25 @@ async function finalizar() {
                           : `${p.estoque ?? p.stock_quantity} un.`
                       }}
                     </StatusPill>
+
                     <Button
+                      v-if="safeNumber(p.estoque ?? p.stock_quantity) <= 0"
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      class="cursor-pointer text-xs"
+                      title="Ir para a página de Produtos para ajustar estoque"
+                      @click="irParaTelaProdutos"
+                    >
+                      <ExternalLink class="size-3.5 mr-1" />
+                      Gerenciar
+                    </Button>
+
+                    <Button
+                      v-else
                       type="button"
                       size="sm"
-                      class="cursor-pointer disabled:cursor-not-allowed"
-                      :disabled="safeNumber(p.estoque ?? p.stock_quantity) <= 0"
+                      class="cursor-pointer"
                       @click="adicionar(p.id)"
                     >
                       <Plus class="size-4" /> Adicionar
@@ -626,66 +633,65 @@ async function finalizar() {
                 descricao="Adicione produtos para ver o valor total da venda."
               />
 
-              <ul
-                v-else
-                class="max-h-[260px] divide-y divide-border overflow-y-auto rounded-lg border border-border"
-              >
-                <li v-for="i in itens" :key="i.id" class="space-y-2 bg-surface px-3 py-2.5">
-                  <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                    <div class="min-w-0">
-                      <p class="truncate text-sm font-medium">{{ i.nome }}</p>
-                      <p class="text-xs text-muted-foreground">{{ brl(i.valor) }} cada</p>
+              <div v-else class="max-h-[220px] overflow-y-auto rounded-lg border border-border">
+                <ul class="divide-y divide-border">
+                  <li v-for="i in itens" :key="i.id" class="space-y-2 bg-surface px-3 py-2.5">
+                    <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                      <div class="min-w-0">
+                        <p class="truncate text-sm font-medium">{{ i.nome }}</p>
+                        <p class="text-xs text-muted-foreground">{{ brl(i.valor) }} cada</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        class="size-7 cursor-pointer"
+                        :aria-label="`Remover ${i.nome}`"
+                        @click="remover(i.id)"
+                      >
+                        <Trash2 class="size-4 text-destructive" />
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      class="size-7 cursor-pointer"
-                      :aria-label="`Remover ${i.nome}`"
-                      @click="remover(i.id)"
+                    <div class="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        class="size-7 cursor-pointer"
+                        aria-label="Diminuir quantidade"
+                        @click="diminuir(i)"
+                      >
+                        <Minus class="size-3.5" />
+                      </Button>
+                      <span class="w-8 text-center text-sm font-semibold">{{ i.qtd }}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        class="size-7 cursor-pointer disabled:cursor-not-allowed"
+                        aria-label="Aumentar quantidade"
+                        :disabled="i.qtd >= i.estoque"
+                        @click="aumentar(i)"
+                      >
+                        <Plus class="size-3.5" />
+                      </Button>
+                      <span class="ml-auto text-sm font-semibold">{{ brl(i.qtd * i.valor) }}</span>
+                    </div>
+                    <p
+                      v-if="i.qtd >= i.estoque"
+                      class="flex items-center gap-1.5 text-xs text-warning"
                     >
-                      <Trash2 class="size-4 text-destructive" />
-                    </Button>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      class="size-7 cursor-pointer"
-                      aria-label="Diminuir quantidade"
-                      @click="diminuir(i)"
-                    >
-                      <Minus class="size-3.5" />
-                    </Button>
-                    <span class="w-8 text-center text-sm font-semibold">{{ i.qtd }}</span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      class="size-7 cursor-pointer disabled:cursor-not-allowed"
-                      aria-label="Aumentar quantidade"
-                      :disabled="i.qtd >= i.estoque"
-                      @click="aumentar(i)"
-                    >
-                      <Plus class="size-3.5" />
-                    </Button>
-                    <span class="ml-auto text-sm font-semibold">{{ brl(i.qtd * i.valor) }}</span>
-                  </div>
-                  <p
-                    v-if="i.qtd >= i.estoque"
-                    class="flex items-center gap-1.5 text-xs text-warning"
-                  >
-                    <TriangleAlert class="size-3.5" aria-hidden="true" />
-                    Limite do estoque disponível ({{ i.estoque }} un.).
-                  </p>
-                </li>
-              </ul>
+                      <TriangleAlert class="size-3.5" aria-hidden="true" />
+                      Limite do estoque disponível ({{ i.estoque }} un.).
+                    </p>
+                  </li>
+                </ul>
+              </div>
             </section>
           </div>
 
           <div
-            class="space-y-4 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
+            class="space-y-4 overflow-y-auto border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
           >
             <section class="space-y-4">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -830,7 +836,7 @@ async function finalizar() {
         </div>
 
         <DialogFooter
-          class="flex-col items-stretch gap-2 border-t border-border pt-5 sm:flex-row sm:items-center"
+          class="flex-col items-stretch gap-2 border-t border-border pt-5 shrink-0 sm:flex-row sm:items-center"
         >
           <p class="text-xs text-muted-foreground sm:mr-auto">
             Campos com <span class="text-destructive">*</span> são obrigatórios. Você será avisado
