@@ -1,16 +1,18 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   ArrowUpRight,
+  Calendar as CalendarIcon,
   CheckCircle2,
   Clock,
   Eye,
   MoreHorizontal,
   Plus,
   Trash2,
+  X,
   XCircle,
 } from 'lucide-vue-next'
 
@@ -86,17 +88,73 @@ const busca = computed({
 const status = ref('todos')
 const formaPagamento = ref('todos')
 
-// ---- Filtro de data dinâmico: sem filtro / data específica / período ----
+// ---- Filtro de data: um único trigger que abre um popover.
+// Dentro dele o usuário escolhe o modo (dia específico ou período)
+// e preenche só os campos daquele modo. ----
 const tipoData = ref('nenhum') // 'nenhum' | 'dia' | 'periodo'
 const dataUnica = ref('')
 const dataInicio = ref('')
 const dataFim = ref('')
 
-// Ao trocar o tipo de filtro, limpa os campos do modo anterior
+const filtroDataAberto = ref(false)
+const dataFiltroRef = ref(null)
+
+// Ao trocar o modo dentro do popover, limpa os campos do modo anterior
 watch(tipoData, () => {
   dataUnica.value = ''
   dataInicio.value = ''
   dataFim.value = ''
+})
+
+function formatDateCurta(dateStr) {
+  if (!dateStr) return ''
+  const [ano, mes, dia] = dateStr.split('-')
+  return `${dia}/${mes}`
+}
+
+const rotuloFiltroData = computed(() => {
+  if (tipoData.value === 'dia') {
+    return dataUnica.value ? formatDateCurta(dataUnica.value) : 'Dia específico'
+  }
+  if (tipoData.value === 'periodo') {
+    if (dataInicio.value && dataFim.value) {
+      return `${formatDateCurta(dataInicio.value)} – ${formatDateCurta(dataFim.value)}`
+    }
+    return 'Período'
+  }
+  return 'Filtrar por data'
+})
+
+function selecionarModoData(modo) {
+  tipoData.value = modo
+}
+
+function limparFiltroData() {
+  tipoData.value = 'nenhum'
+  dataUnica.value = ''
+  dataInicio.value = ''
+  dataFim.value = ''
+  filtroDataAberto.value = false
+}
+
+function handleClickFora(evento) {
+  if (dataFiltroRef.value && !dataFiltroRef.value.contains(evento.target)) {
+    filtroDataAberto.value = false
+  }
+}
+
+function handleTeclaEsc(evento) {
+  if (evento.key === 'Escape') filtroDataAberto.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', handleClickFora)
+  document.addEventListener('keydown', handleTeclaEsc)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleClickFora)
+  document.removeEventListener('keydown', handleTeclaEsc)
 })
 
 const pagina = ref(1)
@@ -367,47 +425,123 @@ async function executarExclusao() {
             </SelectContent>
           </Select>
 
-          <!-- Filtro de data dinâmico: o usuário escolhe se quer filtrar por
-               um dia específico ou por um período, e só os campos relevantes
-               ao modo escolhido aparecem. -->
-          <div class="flex items-center gap-1">
-            <Select v-model="tipoData">
-              <SelectTrigger
-                class="h-10 w-[172px] cursor-pointer bg-surface"
-                aria-label="Tipo de filtro por data"
+          <!--
+            Filtro de data: um único trigger (parece um input/select) que
+            abre um popover próprio. Dentro dele o usuário alterna entre
+            "Dia específico" e "Período" com um segmented control, e só
+            os campos daquele modo aparecem. Nada ao redor se move.
+          -->
+          <div ref="dataFiltroRef" class="relative">
+            <button
+              type="button"
+              class="flex h-10 w-44 cursor-pointer items-center gap-2 rounded-md border border-input bg-surface px-3 text-sm transition-colors hover:bg-muted/50"
+              :class="
+                tipoData !== 'nenhum'
+                  ? 'border-emerald-500/50 text-foreground'
+                  : 'text-muted-foreground'
+              "
+              @click="filtroDataAberto = !filtroDataAberto"
+            >
+              <CalendarIcon class="size-4 shrink-0" />
+              <span class="truncate">{{ rotuloFiltroData }}</span>
+              <X
+                v-if="tipoData !== 'nenhum'"
+                class="ml-auto size-3.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                @click.stop="limparFiltroData"
+              />
+            </button>
+
+            <Transition
+              enter-active-class="transition ease-out duration-100"
+              enter-from-class="opacity-0 scale-95"
+              enter-to-class="opacity-100 scale-100"
+              leave-active-class="transition ease-in duration-75"
+              leave-from-class="opacity-100 scale-100"
+              leave-to-class="opacity-0 scale-95"
+            >
+              <div
+                v-if="filtroDataAberto"
+                class="absolute right-0 top-[calc(100%+6px)] z-50 w-72 rounded-lg border border-border bg-popover p-3 shadow-lg"
               >
-                <SelectValue placeholder="Filtrar por data" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nenhum" class="cursor-pointer">Sem filtro de data</SelectItem>
-                <SelectItem value="dia" class="cursor-pointer">Data específica</SelectItem>
-                <SelectItem value="periodo" class="cursor-pointer">Período</SelectItem>
-              </SelectContent>
-            </Select>
+                <div class="mb-3 grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded px-2 py-1.5 text-xs font-medium transition-colors"
+                    :class="
+                      tipoData === 'dia'
+                        ? 'bg-surface text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    "
+                    @click="selecionarModoData('dia')"
+                  >
+                    Dia específico
+                  </button>
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded px-2 py-1.5 text-xs font-medium transition-colors"
+                    :class="
+                      tipoData === 'periodo'
+                        ? 'bg-surface text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    "
+                    @click="selecionarModoData('periodo')"
+                  >
+                    Período
+                  </button>
+                </div>
 
-            <input
-              v-if="tipoData === 'dia'"
-              v-model="dataUnica"
-              type="date"
-              class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-              title="Data da venda"
-            />
+                <div v-if="tipoData === 'dia'" class="space-y-1.5">
+                  <label class="text-xs text-muted-foreground">Selecione a data</label>
+                  <input
+                    v-model="dataUnica"
+                    type="date"
+                    class="h-9 w-full cursor-pointer rounded-md border border-input bg-surface px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                  />
+                </div>
 
-            <template v-else-if="tipoData === 'periodo'">
-              <input
-                v-model="dataInicio"
-                type="date"
-                class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                title="Data inicial do período"
-              />
-              <span class="text-xs text-muted-foreground">até</span>
-              <input
-                v-model="dataFim"
-                type="date"
-                class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                title="Data final do período"
-              />
-            </template>
+                <div v-else-if="tipoData === 'periodo'" class="space-y-2">
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">De</label>
+                    <input
+                      v-model="dataInicio"
+                      type="date"
+                      class="h-9 w-full cursor-pointer rounded-md border border-input bg-surface px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                  <div class="space-y-1.5">
+                    <label class="text-xs text-muted-foreground">Até</label>
+                    <input
+                      v-model="dataFim"
+                      type="date"
+                      :min="dataInicio || undefined"
+                      class="h-9 w-full cursor-pointer rounded-md border border-input bg-surface px-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                    />
+                  </div>
+                </div>
+
+                <p v-else class="py-1 text-xs text-muted-foreground">
+                  Escolha um modo acima para filtrar por data.
+                </p>
+
+                <div class="mt-3 flex items-center justify-between border-t border-border pt-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-8 cursor-pointer text-xs"
+                    @click="limparFiltroData"
+                  >
+                    Limpar
+                  </Button>
+                  <Button
+                    size="sm"
+                    class="h-8 cursor-pointer bg-emerald-500 text-xs text-black hover:bg-emerald-600"
+                    @click="filtroDataAberto = false"
+                  >
+                    Aplicar
+                  </Button>
+                </div>
+              </div>
+            </Transition>
           </div>
 
           <Button
