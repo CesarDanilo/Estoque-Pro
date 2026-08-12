@@ -55,6 +55,31 @@ const modalAberto = ref(false)
 const fornecedorEditando = ref(null)
 const fornecedorParaExcluir = ref(null)
 
+// ---- Funções de Formatação (CPF / CNPJ e Telefone) ----
+function formatarDocumento(v) {
+  if (!v) return '-'
+  const nums = String(v).replace(/\D/g, '')
+  if (nums.length === 11) {
+    return nums.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  }
+  if (nums.length === 14) {
+    return nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+  }
+  return v
+}
+
+function formatarTelefone(v) {
+  if (!v) return '-'
+  const nums = String(v).replace(/\D/g, '')
+  if (nums.length === 10) {
+    return nums.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
+  }
+  if (nums.length === 11) {
+    return nums.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+  }
+  return v
+}
+
 // ---- TanStack Query: Buscar Lista de Fornecedores ----
 const {
   data: listaFornecedores,
@@ -263,8 +288,8 @@ function confirmarExclusao() {
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                 <div class="min-w-0">
                   <p class="truncate text-sm font-medium">{{ f.name }}</p>
-                  <p class="truncate text-xs text-muted-foreground">
-                    {{ f.document || 'Sem documento' }} · {{ f.city || 'Sem cidade' }}
+                  <p class="truncate text-xs text-muted-foreground font-mono">
+                    {{ formatarDocumento(f.document) }} · {{ f.city || 'Sem cidade' }}
                   </p>
                 </div>
 
@@ -302,7 +327,7 @@ function confirmarExclusao() {
                   {{ f.active ? 'Ativo' : 'Inativo' }}
                 </StatusPill>
                 <span class="text-xs text-muted-foreground">
-                  {{ f.phone || 'Sem telefone' }}
+                  {{ formatarTelefone(f.phone) }}
                 </span>
               </div>
             </li>
@@ -333,10 +358,10 @@ function confirmarExclusao() {
                     </p>
                   </td>
                   <td class="px-4 py-3 text-muted-foreground font-mono text-xs">
-                    {{ f.document || '-' }}
+                    {{ formatarDocumento(f.document) }}
                   </td>
                   <td class="px-4 py-3 text-muted-foreground">
-                    {{ f.phone || '-' }}
+                    {{ formatarTelefone(f.phone) }}
                   </td>
                   <td class="px-4 py-3 text-muted-foreground">
                     {{ f.city ? `${f.city}/${f.state || ''}` : '-' }}
