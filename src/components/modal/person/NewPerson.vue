@@ -32,9 +32,12 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   // quando preenchida, o modal entra em modo edição e popula os campos
   pessoa: { type: Object, default: null },
-  // funções que efetivamente chamam a API (vêm do usePeople, no componente pai)
+  // cria pessoa nova — payload completo (vem do usePeople, no componente pai)
   aoCriar: { type: Function, required: true },
+  // atualização completa — usada como fallback se aoAtualizarParcial não vier
   aoAtualizar: { type: Function, required: true },
+  // atualização parcial (PATCH) — recebe (id, camposAlteradosNoFormatoDaApi)
+  aoAtualizarParcial: { type: Function, default: null },
 })
 
 const emit = defineEmits(['update:open', 'created', 'updated'])
@@ -58,12 +61,15 @@ const erros = reactive({})
 const form = reactive({
   nome: '',
   type: 'individual', // 'individual' | 'company'
-  genero: 'other',    // 'male' | 'female' | 'other'
+  genero: 'other', // 'male' | 'female' | 'other'
   nascimento: '',
   cidade: '',
   endereco: '',
   ativo: true,
 })
+
+// snapshot dos valores originais (formato "front") — usado pra detectar o que mudou no modo edição
+let snapshot = null
 
 const modoEdicao = computed(() => !!props.pessoa)
 
@@ -79,6 +85,12 @@ function dataLocalHoje() {
 }
 
 const hoje = dataLocalHoje()
+
+// normaliza datas vindas da API (ISO completo ou 'YYYY-MM-DD') pro formato do <input type="date">
+function paraDataInput(valor) {
+  if (!valor) return ''
+  return String(valor).slice(0, 10)
+}
 
 const emailModel = computed({
   get: () => email.value,
@@ -193,7 +205,7 @@ function preencherFormulario() {
     form.nome = p.nome ?? ''
     form.type = p.type ?? 'individual'
     form.genero = p.genero ?? 'other'
-    form.nascimento = p.nascimento ?? ''
+    form.nascimento = paraDataInput(p.nascimento)
     form.cidade = p.cidade ?? ''
     form.endereco = p.endereco ?? ''
     form.ativo = p.status ? p.status === 'ativo' : (p.ativo ?? true)
@@ -217,6 +229,23 @@ function preencherFormulario() {
 
   email.status = 'idle'
   Object.keys(erros).forEach((chave) => delete erros[chave])
+
+  // captura o snapshot DEPOIS de preencher — é a "foto" do estado original pro diff
+  snapshot = p
+    ? {
+        nome: form.nome,
+        documento: documento.raw.value,
+        telefone: telefone.raw.value,
+        email: email.value,
+        type: form.type,
+        genero: form.genero,
+        nascimento: form.nascimento,
+        cep: cep.raw.value,
+        cidade: form.cidade,
+        endereco: form.endereco,
+        ativo: form.ativo,
+      }
+    : null
 }
 
 function fechar() {
@@ -298,6 +327,36 @@ function validar() {
   return resultado.data ?? payload
 }
 
+// mapa front -> API, usado só pra montar o diff no modo edição
+const CAMPO_PARA_API = {
+  nome: 'name',
+  documento: 'document',
+  telefone: 'phone',
+  email: 'email',
+  type: 'type',
+  genero: 'gender',
+  nascimento: 'birth_date',
+  cep: 'zip_code',
+  cidade: 'city',
+  endereco: 'address',
+  ativo: 'active',
+}
+
+// compara o payload atual (formato front) com o snapshot e devolve só o que mudou,
+// já convertido pro formato da API (ex.: 'nome' -> 'name')
+function calcularDiff(payloadAtual) {
+  const diff = {}
+
+  for (const [campoFront, valorAtual] of Object.entries(payloadAtual)) {
+    const valorOriginal = snapshot ? snapshot[campoFront] : undefined
+    if (valorAtual !== valorOriginal) {
+      diff[CAMPO_PARA_API[campoFront]] = valorAtual
+    }
+  }
+
+  return diff
+}
+
 // Mapeia erros de validação vindos do Laravel (em inglês) de volta pros campos do form (português)
 const MAPA_CAMPOS_API = {
   name: 'nome',
@@ -321,6 +380,9 @@ function aplicarErrosDaApi(e) {
       const chave = MAPA_CAMPOS_API[campo] || campo
       erros[chave] = Array.isArray(mensagens) ? mensagens[0] : mensagens
     })
+    if (apiErrors.document) {
+      erros.documento = 'Já existe uma pessoa cadastrada com este CPF ou CNPJ.'
+    }
     erro('Confira os campos destacados antes de salvar.')
   } else {
     erro(e.response?.data?.message || 'Não foi possível salvar. Tente novamente.')
@@ -339,7 +401,18 @@ async function salvar() {
   salvando.value = true
   try {
     if (modoEdicao.value) {
-      const pessoaSalva = await props.aoAtualizar(props.pessoa.id, payload)
+      const diff = calcularDiff(payload)
+
+      // nada mudou — não precisa nem chamar a API
+      if (Object.keys(diff).length === 0) {
+        fechar()
+        return
+      }
+
+      const pessoaSalva = props.aoAtualizarParcial
+        ? await props.aoAtualizarParcial(props.pessoa.id, diff)
+        : await props.aoAtualizar(props.pessoa.id, payload) // fallback: envia tudo
+
       emit('updated', pessoaSalva)
     } else {
       const pessoaSalva = await props.aoCriar(payload)
@@ -389,7 +462,9 @@ async function salvar() {
                 />
                 <span
                   class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
-                  :class="form.nome.length >= NOME_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                  :class="
+                    form.nome.length >= NOME_MAX ? 'text-red-500' : 'text-muted-foreground/40'
+                  "
                 >
                   {{ form.nome.length }}/{{ NOME_MAX }}
                 </span>
@@ -399,13 +474,16 @@ async function salvar() {
 
             <div class="grid grid-cols-4 gap-x-6">
               <div>
-                <label for="documento" class="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground">
+                <label
+                  for="documento"
+                  class="mb-1.5 flex items-center gap-2 text-sm font-medium text-foreground"
+                >
                   <span
                     class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors"
                     :class="documentoBadge.classe"
                   >
-                    {{ documentoBadge.texto }}
-                  </span><span class="text-destructive">*</span>
+                    {{ documentoBadge.texto }} </span
+                  ><span class="text-destructive">*</span>
                 </label>
                 <input
                   id="documento"
@@ -417,7 +495,9 @@ async function salvar() {
                   :aria-invalid="!!erros.documento"
                   @input="documento.onInput"
                 />
-                <p v-if="erros.documento" class="mt-1 text-xs text-destructive">{{ erros.documento }}</p>
+                <p v-if="erros.documento" class="mt-1 text-xs text-destructive">
+                  {{ erros.documento }}
+                </p>
                 <p v-else class="mt-1 text-xs text-muted-foreground">CPF ou CNPJ, automático.</p>
               </div>
 
@@ -437,7 +517,9 @@ async function salvar() {
               </div>
 
               <div>
-                <label for="genero" class="mb-1.5 block text-sm font-medium text-foreground">Gênero</label>
+                <label for="genero" class="mb-1.5 block text-sm font-medium text-foreground"
+                  >Gênero</label
+                >
                 <Select v-model="form.genero" :disabled="!ehPessoaFisica">
                   <SelectTrigger id="genero" class="h-10 w-full cursor-pointer">
                     <SelectValue />
@@ -445,7 +527,9 @@ async function salvar() {
                   <SelectContent>
                     <SelectItem value="female" class="cursor-pointer">Feminino</SelectItem>
                     <SelectItem value="male" class="cursor-pointer">Masculino</SelectItem>
-                    <SelectItem value="other" class="cursor-pointer">Prefiro não informar</SelectItem>
+                    <SelectItem value="other" class="cursor-pointer"
+                      >Prefiro não informar</SelectItem
+                    >
                   </SelectContent>
                 </Select>
               </div>
@@ -463,7 +547,9 @@ async function salvar() {
                   class="h-10 cursor-text"
                   :aria-invalid="!!erros.nascimento"
                 />
-                <p v-if="erros.nascimento" class="mt-1 text-xs text-destructive">{{ erros.nascimento }}</p>
+                <p v-if="erros.nascimento" class="mt-1 text-xs text-destructive">
+                  {{ erros.nascimento }}
+                </p>
               </div>
             </div>
           </div>
@@ -490,7 +576,9 @@ async function salvar() {
                 :aria-invalid="!!erros.telefone"
                 @input="telefone.onInput"
               />
-              <p v-if="erros.telefone" class="mt-1 text-xs text-destructive">{{ erros.telefone }}</p>
+              <p v-if="erros.telefone" class="mt-1 text-xs text-destructive">
+                {{ erros.telefone }}
+              </p>
             </div>
 
             <div class="col-span-3">
@@ -514,12 +602,17 @@ async function salvar() {
                 />
                 <span
                   class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
-                  :class="email.value.length >= EMAIL_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                  :class="
+                    email.value.length >= EMAIL_MAX ? 'text-red-500' : 'text-muted-foreground/40'
+                  "
                 >
                   {{ email.value.length }}/{{ EMAIL_MAX }}
                 </span>
               </div>
-              <p v-if="email.status === 'invalid' || erros.email" class="mt-1 text-xs text-destructive">
+              <p
+                v-if="email.status === 'invalid' || erros.email"
+                class="mt-1 text-xs text-destructive"
+              >
                 {{ erros.email || 'Informe um e-mail válido.' }}
               </p>
             </div>
@@ -564,7 +657,9 @@ async function salvar() {
                 class="h-10 cursor-text"
                 :aria-invalid="!!erros.endereco"
               />
-              <p v-if="erros.endereco" class="mt-1 text-xs text-destructive">{{ erros.endereco }}</p>
+              <p v-if="erros.endereco" class="mt-1 text-xs text-destructive">
+                {{ erros.endereco }}
+              </p>
             </div>
           </div>
         </section>
@@ -575,7 +670,9 @@ async function salvar() {
             Situação
           </h3>
 
-          <div class="flex items-center justify-between gap-3 rounded-md border border-input px-4 py-3">
+          <div
+            class="flex items-center justify-between gap-3 rounded-md border border-input px-4 py-3"
+          >
             <div class="space-y-0.5">
               <label for="ativo" class="text-sm font-medium text-foreground">Pessoa ativa</label>
               <p class="text-xs text-muted-foreground">Inativas não aparecem em novas vendas.</p>
@@ -589,7 +686,9 @@ async function salvar() {
         </section>
 
         <DialogFooter class="pt-3">
-          <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">Cancelar</Button>
+          <Button type="button" variant="outline" class="cursor-pointer" @click="fechar"
+            >Cancelar</Button
+          >
           <Button
             type="submit"
             :disabled="salvando"

@@ -41,14 +41,47 @@ export function usePeople() {
     return personFromApi(data.person)
   }
 
+  // update completo (usado pelo modal de edição) — manda todos os campos via PUT
   async function atualizar(id, pessoa) {
     const { data } = await api.put(`/person/${id}`, personToApi(pessoa))
     return personFromApi(data.person)
+  }
+
+  // update parcial — manda só os campos alterados via PATCH.
+  // `camposParciais` já deve estar no formato da API (ex: { active: false }).
+  // Depende do backend aceitar 'sometimes' nas regras de validação do update.
+  async function atualizarParcial(id, camposParciais) {
+    const { data } = await api.patch(`/person/${id}`, camposParciais)
+    const pessoaAtualizada = personFromApi(data.person)
+
+    // reflete a mudança na lista local sem precisar recarregar tudo
+    const index = pessoas.value.findIndex((p) => p.id === id)
+    if (index !== -1) {
+      pessoas.value[index] = { ...pessoas.value[index], ...pessoaAtualizada }
+    }
+
+    return pessoaAtualizada
+  }
+
+  // helper pronto pra um switch/toggle de ativo direto na tabela
+  async function alternarAtivo(id, ativo) {
+    return atualizarParcial(id, { active: ativo })
   }
 
   async function remover(id) {
     await api.delete(`/person/${id}`)
   }
 
-  return { pessoas, carregando, erro, meta, buscar, criar, atualizar, remover }
+  return {
+    pessoas,
+    carregando,
+    erro,
+    meta,
+    buscar,
+    criar,
+    atualizar,
+    atualizarParcial,
+    alternarAtivo,
+    remover,
+  }
 }

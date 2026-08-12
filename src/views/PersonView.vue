@@ -47,7 +47,8 @@ onMounted(() => {
 
 const BUSCA_MAX = 60
 
-const { pessoas, carregando, meta, buscar, criar, atualizar, remover } = usePeople()
+const { pessoas, carregando, meta, buscar, criar, atualizar, atualizarParcial, remover } =
+  usePeople()
 const { sucesso, erro: erroFeedback } = useFeedback()
 
 const buscaBruta = ref('')
@@ -414,6 +415,7 @@ async function executarExclusao(excluir) {
     :pessoa="pessoaEditando"
     :ao-criar="criar"
     :ao-atualizar="atualizar"
+    :ao-atualizar-parcial="atualizarParcial"
     @created="pessoaCriada"
     @updated="pessoaAtualizada"
   />
