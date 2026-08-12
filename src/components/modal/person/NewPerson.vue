@@ -76,6 +76,16 @@ const modoEdicao = computed(() => !!props.pessoa)
 // gênero/nascimento só fazem sentido pra pessoa física
 const ehPessoaFisica = computed(() => form.type === 'individual')
 
+// exatamente 11 dígitos é um CPF completo — trava o tipo em "física"
+const documentoEhCPF = computed(() => documento.raw.value.length === 11)
+
+// mais de 11 dígitos só pode ser CNPJ — nesse caso o tipo é travado em "jurídica"
+// e só libera de novo se o usuário apagar os dígitos extras do documento
+const documentoEhCNPJ = computed(() => documento.raw.value.length > 11)
+
+// true sempre que o documento já "decidiu" o tipo (CPF completo ou CNPJ) — usado pra desabilitar o Select
+const tipoTravadoPeloDocumento = computed(() => documentoEhCPF.value || documentoEhCNPJ.value)
+
 // compara reativamente o estado atual do form com o snapshot original —
 // no modo criação sempre é true (não há "original" pra comparar)
 const temAlteracoes = computed(() => {
@@ -136,10 +146,35 @@ watch(
   },
 )
 
-// se trocar pra pessoa jurídica, limpa gênero/nascimento (não fazem sentido pra CNPJ)
+// assim que o documento vira CNPJ (mais de 11 dígitos), força o tipo pra jurídica.
+watch(documentoEhCNPJ, (ehCnpj) => {
+  if (ehCnpj) {
+    form.type = 'company'
+  }
+})
+
+// assim que o documento fecha um CPF (11 dígitos), força o tipo pra física.
+watch(documentoEhCPF, (ehCpf) => {
+  if (ehCpf) {
+    form.type = 'individual'
+  }
+})
+
+// trava "dura": além do Select ficar desabilitado (ver template), qualquer tentativa de
+// mudar form.type enquanto o documento já define CPF/CNPJ é revertida na hora — assim
+// não depende só do :disabled do componente de Select pra funcionar.
+// também é aqui que limpamos gênero/nascimento quando o tipo é jurídica.
 watch(
   () => form.type,
   (tipo) => {
+    if (tipo === 'company' && documentoEhCPF.value) {
+      form.type = 'individual'
+      return
+    }
+    if (tipo === 'individual' && documentoEhCNPJ.value) {
+      form.type = 'company'
+      return
+    }
     if (tipo === 'company') {
       form.genero = 'other'
       form.nascimento = ''
@@ -526,7 +561,7 @@ async function salvar() {
                 <label for="type" class="mb-1.5 block text-sm font-medium text-foreground">
                   Tipo <span class="text-destructive">*</span>
                 </label>
-                <Select v-model="form.type">
+                <Select v-model="form.type" :disabled="tipoTravadoPeloDocumento">
                   <SelectTrigger id="type" class="h-10 w-full cursor-pointer">
                     <SelectValue />
                   </SelectTrigger>
@@ -535,6 +570,9 @@ async function salvar() {
                     <SelectItem value="company" class="cursor-pointer">Pessoa jurídica</SelectItem>
                   </SelectContent>
                 </Select>
+                <p v-if="tipoTravadoPeloDocumento" class="mt-1 text-xs text-muted-foreground">
+                  Definido automaticamente pelo {{ documentoEhCNPJ ? 'CNPJ' : 'CPF' }}.
+                </p>
               </div>
 
               <div>
