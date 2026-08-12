@@ -1,6 +1,6 @@
 <script setup>
-import { computed } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, onMounted } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import {
   LayoutDashboard,
@@ -15,9 +15,12 @@ import {
   Settings,
   Layers,
   Boxes,
+  LogOut,
 } from 'lucide-vue-next'
 
 import { useUiStore } from '@/stores/ui'
+import { useAuthStore } from '@/stores/auth'
+import { useFeedback } from '@/composables/useFeedBack'
 
 // Estrutura de um item de navegação:
 // { titulo, url, icone, exato? }
@@ -63,6 +66,12 @@ const secoes = [
 const ui = useUiStore()
 const { sidebarCollapsed, sidebarMobileOpen } = storeToRefs(ui)
 
+const auth = useAuthStore()
+const { usuario, iniciais } = storeToRefs(auth)
+
+const router = useRouter()
+const { sucesso } = useFeedback()
+
 const route = useRoute()
 const pathname = computed(() => route.path)
 
@@ -71,6 +80,18 @@ function ativo(url, exato) {
     ? pathname.value === url
     : pathname.value === url || pathname.value.startsWith(url + '/')
 }
+
+async function sair() {
+  await auth.logout()
+  sucesso('Até logo', 'Você saiu da sua conta.')
+  router.push('/login')
+}
+
+onMounted(() => {
+  if (!usuario.value) {
+    auth.buscarUsuarioLogado()
+  }
+})
 </script>
 
 <template>
@@ -130,12 +151,21 @@ function ativo(url, exato) {
     <!-- Footer -->
     <div class="flex min-w-0 items-center gap-2.5 border-t px-3 py-3">
       <div class="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold">
-        JP
+        {{ iniciais }}
       </div>
-      <div v-if="!sidebarCollapsed" class="min-w-0">
-        <p class="truncate text-sm">Juliana Prado</p>
-        <p class="truncate text-xs text-muted-foreground">Administradora</p>
+      <div v-if="!sidebarCollapsed" class="min-w-0 flex-1">
+        <p class="truncate text-sm">{{ usuario?.name || 'Carregando...' }}</p>
+        <p class="truncate text-xs text-muted-foreground">{{ usuario?.email || '' }}</p>
       </div>
+      <button
+        type="button"
+        title="Sair"
+        aria-label="Sair da conta"
+        class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        @click="sair"
+      >
+        <LogOut class="size-4" aria-hidden="true" />
+      </button>
     </div>
   </aside>
 </template>
