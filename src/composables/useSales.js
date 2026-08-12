@@ -14,7 +14,13 @@ export function useSales(filters = {}) {
         page: rawFilters.page,
         per_page: rawFilters.per_page,
         search: rawFilters.search || undefined,
-        status: rawFilters.status !== 'todos' ? rawFilters.status : undefined,
+        status: rawFilters.status && rawFilters.status !== 'todos' ? rawFilters.status : undefined,
+        payment_method:
+          rawFilters.payment_method && rawFilters.payment_method !== 'todos'
+            ? rawFilters.payment_method
+            : undefined,
+        start_date: rawFilters.start_date || undefined,
+        end_date: rawFilters.end_date || undefined,
       })
     },
     keepPreviousData: true,
@@ -25,7 +31,23 @@ export function useSales(filters = {}) {
   const createSaleMutation = useMutation({
     mutationFn: (saleData) => saleService.createSale(saleData),
     onSuccess: () => {
-      // Invalida cache de vendas e de produtos (para refletir o estoque baixado)
+      queryClient.invalidateQueries({ queryKey: ['sales'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+    },
+  })
+
+  // 3. Mutation: Atualizar Venda / Status
+  const updateSaleMutation = useMutation({
+    mutationFn: ({ id, data }) => saleService.updateSale(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] })
+    },
+  })
+
+  // 4. Mutation: Excluir Venda (Soft Delete)
+  const deleteSaleMutation = useMutation({
+    mutationFn: (id) => saleService.deleteSale(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
     },
@@ -66,8 +88,15 @@ export function useSales(filters = {}) {
     aguardandoPagamento,
     ticketMedio,
 
-    // Mutation
+    // Mutations (Criar, Atualizar e Excluir)
     createSale: createSaleMutation.mutateAsync,
     isCreating: createSaleMutation.isPending,
+
+    updateSaleStatus: (id, data) => updateSaleMutation.mutateAsync({ id, data }),
+    updateSale: (id, data) => updateSaleMutation.mutateAsync({ id, data }),
+    isUpdating: updateSaleMutation.isPending,
+
+    deleteSale: (id) => deleteSaleMutation.mutateAsync(id),
+    isDeleting: deleteSaleMutation.isPending,
   }
 }

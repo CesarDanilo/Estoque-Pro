@@ -1,27 +1,23 @@
-import axios from './api'
+import api from '@/services/api' // ou sua instância do axios configurada
 
 export const saleService = {
-  /**
-   * Busca as vendas paginadas com filtros
-   */
-  async getSales(params = {}) {
-    const { data } = await axios.get('/sales', { params })
-    return data
+  async getSales(params) {
+    const response = await api.get('/sales', { params })
+    return response.data
   },
 
-  /**
-   * Registra uma nova venda
-   */
-  async createSale(saleData) {
-    const { data } = await axios.post('/sales', saleData)
-    return data
+  async createSale(data) {
+    const response = await api.post('/sales', data)
+    return response.data
   },
 
-  /**
-   * Detalhes de uma venda por ID
-   */
-  async getSaleById(id) {
-    const { data } = await axios.get(`/sales/${id}`)
-    return data
+  async updateSale(id, data) {
+    const response = await api.put(`/sales/${id}`, data)
+    return response.data
+  },
+
+  async deleteSale(id) {
+    const response = await api.delete(`/sales/${id}`)
+    return response.data
   },
 }
