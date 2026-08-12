@@ -16,31 +16,31 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useFeedback } from '@/composables/useFeedBack'
+import { useGroups } from '@/composables/useGroups'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   grupo: { type: Object, default: null },
 })
 
-const emit = defineEmits(['update:open', 'salvo'])
+const emit = defineEmits(['update:open'])
 
+const { createMutation, updateMutation } = useGroups()
 const { sucesso, erro } = useFeedback()
 
 const NOME_MAX = 60
 const DESCRICAO_MAX = 250
 
-const salvando = ref(false)
 const erros = reactive({})
-
 const form = reactive({
   nome: '',
   descricao: '',
   ativo: true,
 })
 
-const editando = computed(() => !!props.grupo)
+const editando = computed(() => !!props.grupo?.id)
+const salvando = computed(() => createMutation.isPending.value || updateMutation.isPending.value)
 
-// Modeles com restrição de tamanho de caracteres
 const nomeModel = computed({
   get: () => form.nome,
   set: (v) => {
@@ -63,24 +63,14 @@ watch(
   },
 )
 
-// Limpeza de erros em tempo real assim que o usuário digita
-watch(
-  () => form.nome,
-  (v) => {
-    if (erros.nome && v.trim().length >= 3) delete erros.nome
-  },
-)
-
 function preencherFormulario() {
   const g = props.grupo
-
-  // Limpa todos os erros
   Object.keys(erros).forEach((chave) => delete erros[chave])
 
   if (g) {
-    form.nome = g.nome ?? ''
-    form.descricao = g.descricao ?? ''
-    form.ativo = g.status ? g.status === 'ativo' : true
+    form.nome = g.name ?? ''
+    form.descricao = g.description ?? ''
+    form.ativo = typeof g.active !== 'undefined' ? Boolean(g.active) : true
   } else {
     form.nome = ''
     form.descricao = ''
@@ -110,24 +100,36 @@ function salvar() {
     return
   }
 
-  salvando.value = true
+  const payload = {
+    name: form.nome,
+    description: form.descricao || null,
+    active: form.ativo,
+  }
 
-  setTimeout(() => {
-    salvando.value = false
-    sucesso(
-      editando.value ? 'Grupo atualizado' : 'Grupo cadastrado',
-      editando.value
-        ? 'Grupo atualizado com sucesso.'
-        : 'Grupo cadastrado com sucesso.',
+  if (editando.value) {
+    updateMutation.mutate(
+      { id: props.grupo.id, payload },
+      {
+        onSuccess: () => {
+          sucesso('Grupo atualizado', 'Grupo atualizado com sucesso.')
+          fechar()
+        },
+        onError: (err) => {
+          erro('Erro ao salvar', err.response?.data?.message || 'Erro ao atualizar grupo.')
+        },
+      },
     )
-
-    emit('salvo', {
-      ...form,
-      status: form.ativo ? 'ativo' : 'inativo',
+  } else {
+    createMutation.mutate(payload, {
+      onSuccess: () => {
+        sucesso('Grupo cadastrado', 'Grupo cadastrado com sucesso.')
+        fechar()
+      },
+      onError: (err) => {
+        erro('Erro ao salvar', err.response?.data?.message || 'Erro ao cadastrar grupo.')
+      },
     })
-
-    fechar()
-  }, 700)
+  }
 }
 </script>
 
@@ -161,16 +163,16 @@ function salvar() {
                 :maxlength="NOME_MAX"
                 class="h-10 cursor-text pr-14"
                 :class="{ 'border-destructive focus-visible:ring-destructive': erros.nome }"
-                :aria-invalid="!!erros.nome"
               />
               <span
-                class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
-                :class="form.nome.length >= NOME_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums text-muted-foreground/40"
               >
                 {{ form.nome.length }}/{{ NOME_MAX }}
               </span>
             </div>
-            <p v-if="erros.nome" class="mt-1 text-xs text-destructive font-medium">{{ erros.nome }}</p>
+            <p v-if="erros.nome" class="mt-1 text-xs text-destructive font-medium">
+              {{ erros.nome }}
+            </p>
           </div>
 
           <div>
@@ -187,8 +189,7 @@ function salvar() {
                 :maxlength="DESCRICAO_MAX"
               />
               <span
-                class="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] font-medium tabular-nums transition-colors"
-                :class="form.descricao.length >= DESCRICAO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                class="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] font-medium tabular-nums text-muted-foreground/40"
               >
                 {{ form.descricao.length }}/{{ DESCRICAO_MAX }}
               </span>
@@ -197,7 +198,9 @@ function salvar() {
         </section>
 
         <section class="space-y-4 border-t border-border pt-5">
-          <div class="flex items-center justify-between gap-3 rounded-lg border border-input px-4 py-3">
+          <div
+            class="flex items-center justify-between gap-3 rounded-lg border border-input px-4 py-3"
+          >
             <div class="space-y-0.5">
               <label for="grupo-ativo" class="text-sm font-medium text-foreground cursor-pointer">
                 Grupo ativo
