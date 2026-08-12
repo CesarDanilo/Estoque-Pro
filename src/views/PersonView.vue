@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
   Download,
   MoreHorizontal,
@@ -101,9 +101,17 @@ function abrirModal() {
   modalAberto.value = true
 }
 
-function abrirEdicao(pessoa) {
+// aguarda o DropdownMenu terminar de fechar (nextTick) antes de abrir o modal —
+// evita o bug de pointer-events travado do Radix/shadcn quando Dropdown + Dialog se sobrepõem
+async function abrirEdicao(pessoa) {
   pessoaEditando.value = pessoa
+  await nextTick()
   modalAberto.value = true
+}
+
+async function confirmarSelecaoExclusao(pessoa) {
+  await nextTick()
+  excluir.value = pessoa
 }
 
 function pessoaCriada() {
@@ -117,9 +125,10 @@ function pessoaAtualizada() {
   recarregar()
 }
 
-async function confirmarExclusao() {
+async function confirmarExclusao(pessoa) {
   try {
-    await remover(excluir.value.id)
+    await nextTick()
+    excluir.value = pessoa
     sucesso('Pessoa excluída', 'A pessoa foi excluída com sucesso.')
     excluir.value = null
     recarregar()
@@ -233,7 +242,7 @@ async function confirmarExclusao() {
                     <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao(p)">
                       <Pencil class="size-4" /> Editar
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = p">
+                    <DropdownMenuItem class="cursor-pointer text-destructive" @click="confirmarExclusao(p)">
                       <Trash2 class="size-4" /> Excluir
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -289,7 +298,7 @@ async function confirmarExclusao() {
                       <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao(p)">
                         <Pencil class="size-4" /> Editar
                       </DropdownMenuItem>
-                      <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = p">
+                      <DropdownMenuItem class="cursor-pointer text-destructive" @click="confirmarSelecaoExclusao(p)">
                         <Trash2 class="size-4" /> Excluir
                       </DropdownMenuItem>
                     </DropdownMenuContent>
