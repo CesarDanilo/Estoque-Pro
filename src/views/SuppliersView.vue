@@ -18,7 +18,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -74,7 +73,7 @@ const deleteMutation = useMutation({
     queryClient.invalidateQueries({ queryKey: ['suppliers'] })
     sucesso(
       'Fornecedor excluído',
-      `O fornecedor "${fornecedorParaExcluir.value?.name}" foi removido com sucesso.`,
+      `O fornecedor "${fornecedorParaExcluir.value?.name || ''}" foi removido com sucesso.`,
     )
     fornecedorParaExcluir.value = null
   },
@@ -131,8 +130,10 @@ function alternarStatusFornecedor(fornecedor) {
 }
 
 function confirmarExclusao() {
-  if (!fornecedorParaExcluir.value) return
-  deleteMutation.mutate(fornecedorParaExcluir.value.id)
+  const id = fornecedorParaExcluir.value?.id
+  if (!id || deleteMutation.isPending.value) return
+
+  deleteMutation.mutate(id)
 }
 </script>
 
@@ -389,7 +390,11 @@ function confirmarExclusao() {
 
     <AlertDialog
       :open="!!fornecedorParaExcluir"
-      @update:open="(o) => !o && (fornecedorParaExcluir = null)"
+      @update:open="
+        (o) => {
+          if (!o && !deleteMutation.isPending.value) fornecedorParaExcluir = null
+        }
+      "
     >
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -400,15 +405,23 @@ function confirmarExclusao() {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel class="cursor-pointer">Cancelar</AlertDialogCancel>
-          <AlertDialogAction
+          <AlertDialogCancel
+            class="cursor-pointer"
+            :disabled="deleteMutation.isPending.value"
+            @click="fornecedorParaExcluir = null"
+          >
+            Cancelar
+          </AlertDialogCancel>
+
+          <Button
+            type="button"
             class="cursor-pointer bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
             :disabled="deleteMutation.isPending.value"
             @click="confirmarExclusao"
           >
             <Loader2 v-if="deleteMutation.isPending.value" class="size-4 animate-spin mr-1.5" />
             {{ deleteMutation.isPending.value ? 'Excluindo…' : 'Excluir' }}
-          </AlertDialogAction>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

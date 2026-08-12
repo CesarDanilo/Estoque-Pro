@@ -68,6 +68,23 @@ const ieRaw = ref('')
 const telefoneRaw = ref('')
 const cepRaw = ref('')
 
+// ---- Estado Inicial para Comparação (Dirty State) ----
+const snapshotInicial = ref('')
+
+function obterSnapshotAtual() {
+  return JSON.stringify({
+    form,
+    documentoRaw: documentoRaw.value,
+    ieRaw: ieRaw.value,
+    telefoneRaw: telefoneRaw.value,
+    cepRaw: cepRaw.value,
+  })
+}
+
+const formAlterado = computed(() => {
+  return obterSnapshotAtual() !== snapshotInicial.value
+})
+
 function aplicarMascaraDocumento(v) {
   const nums = (v ?? '').replace(/\D/g, '').slice(0, 14)
   if (nums.length <= 11) {
@@ -150,7 +167,6 @@ const saveMutation = useMutation({
   },
   onError: (err) => {
     if (err.response?.status === 422 && err.response.data?.errors) {
-      // Mapeia erros de validação retornados pelo Laravel
       const apiErrors = err.response.data.errors
       Object.keys(apiErrors).forEach((key) => {
         erros[key] = apiErrors[key][0]
@@ -164,7 +180,7 @@ const saveMutation = useMutation({
 
 const salvando = computed(() => saveMutation.isPending.value)
 
-// ---- Validação para ativar o botão de Salvar ----
+// ---- Validação do Formulário ----
 const formPreenchido = computed(() => {
   return (
     form.nome.trim() !== '' ||
@@ -343,6 +359,9 @@ function preencherFormulario() {
     telefoneRaw.value = ''
     cepRaw.value = ''
   }
+
+  // Captura o snapshot inicial após preencher todos os dados
+  snapshotInicial.value = obterSnapshotAtual()
 }
 
 function fechar() {
@@ -376,14 +395,13 @@ function validar() {
 }
 
 function salvar() {
-  if (salvando.value || !formPreenchido.value) return
+  if (salvando.value || !formPreenchido.value || !formAlterado.value) return
 
   if (!validar()) {
     erro('Confira os campos destacados antes de salvar.')
     return
   }
 
-  // Monta payload compatível com a API
   const payload = {
     name: form.nome,
     trade_name: form.nomeFantasia,
@@ -935,7 +953,7 @@ function salvar() {
           </Button>
           <Button
             type="submit"
-            :disabled="salvando || !formPreenchido"
+            :disabled="salvando || !formPreenchido || !formAlterado"
             class="cursor-pointer h-9 text-xs bg-emerald-500 text-black hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto min-w-[130px]"
           >
             <Loader2 v-if="salvando" class="size-3.5 animate-spin mr-1.5" />
