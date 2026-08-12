@@ -16,7 +16,6 @@ import { useDebounceFn } from '@/composables/useDebounce'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -129,10 +128,10 @@ async function abrirEdicao(pessoa) {
 }
 
 // Apenas SELECIONA a pessoa e ABRE o modal de confirmação — não exclui nada aqui.
-async function confirmarSelecaoExclusao(pessoa) {
+// (mesmo cuidado com nextTick que abrirEdicao, pelo mesmo motivo: Dropdown + AlertDialog sobrepostos)
+async function selecionarParaExclusao(pessoa) {
   await nextTick()
   excluir.value = pessoa
-  executarExclusao(excluir)
 }
 
 function pessoaCriada() {
@@ -146,11 +145,22 @@ function pessoaAtualizada() {
   recarregar()
 }
 
-async function executarExclusao(excluir) {
-  if (!excluir.value) return
+// Só é chamada pelo clique no botão "Excluir" dentro do AlertDialog — exclui de fato.
+//
+// IMPORTANTE: o botão de confirmar é um <Button> comum, NÃO um AlertDialogAction.
+// O AlertDialogAction do reka-ui/radix-vue fecha o diálogo sozinho ao ser clicado,
+// de forma incondicional (nem "event.preventDefault()" bloqueia esse comportamento
+// na porta pra Vue). Isso disparava o @update:open ANTES desta função terminar,
+// zerando `excluir.value` no meio do caminho e cancelando a exclusão. Usando um
+// Button comum, o fechamento do diálogo passa a ser controlado 100% por nós —
+// só acontece quando `excluir.value = null` é setado abaixo, após o sucesso.
+async function confirmarExclusao() {
+  const alvo = excluir.value
+  if (!alvo || excluindo.value) return
 
+  excluindo.value = true
   try {
-    await remover(excluir.value.id)
+    await remover(alvo.id)
     sucesso('Pessoa excluída', 'A pessoa foi excluída com sucesso.')
     excluir.value = null
     pagina.value = 1
@@ -278,7 +288,7 @@ async function executarExclusao(excluir) {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       class="cursor-pointer text-destructive"
-                      @click="confirmarSelecaoExclusao(p)"
+                      @click="selecionarParaExclusao(p)"
                     >
                       <Trash2 class="size-4" /> Excluir
                     </DropdownMenuItem>
@@ -346,7 +356,7 @@ async function executarExclusao(excluir) {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         class="cursor-pointer text-destructive"
-                        @click="confirmarSelecaoExclusao(p)"
+                        @click="selecionarParaExclusao(p)"
                       >
                         <Trash2 class="size-4" /> Excluir
                       </DropdownMenuItem>
@@ -399,13 +409,14 @@ async function executarExclusao(excluir) {
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel class="cursor-pointer" :disabled="excluindo">Cancelar</AlertDialogCancel>
-        <AlertDialogAction
-          class="cursor-pointer bg-red-500 text-white hover:bg-red-600"
+        <Button
+          type="button"
+          class="cursor-pointer bg-red-500 text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
           :disabled="excluindo"
-          @click="confirmarSelecaoExclusao"
+          @click="confirmarExclusao"
         >
           {{ excluindo ? 'Excluindo…' : 'Excluir' }}
-        </AlertDialogAction>
+        </Button>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

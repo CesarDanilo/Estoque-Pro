@@ -76,6 +76,27 @@ const modoEdicao = computed(() => !!props.pessoa)
 // gênero/nascimento só fazem sentido pra pessoa física
 const ehPessoaFisica = computed(() => form.type === 'individual')
 
+// compara reativamente o estado atual do form com o snapshot original —
+// no modo criação sempre é true (não há "original" pra comparar)
+const temAlteracoes = computed(() => {
+  if (!modoEdicao.value) return true
+  if (!snapshot) return true
+
+  return (
+    form.nome !== snapshot.nome ||
+    documento.raw.value !== snapshot.documento ||
+    telefone.raw.value !== snapshot.telefone ||
+    email.value !== snapshot.email ||
+    form.type !== snapshot.type ||
+    form.genero !== snapshot.genero ||
+    form.nascimento !== snapshot.nascimento ||
+    cep.raw.value !== snapshot.cep ||
+    form.cidade !== snapshot.cidade ||
+    form.endereco !== snapshot.endereco ||
+    form.ativo !== snapshot.ativo
+  )
+})
+
 function dataLocalHoje() {
   const agora = new Date()
   const ano = agora.getFullYear()
@@ -403,7 +424,7 @@ async function salvar() {
     if (modoEdicao.value) {
       const diff = calcularDiff(payload)
 
-      // nada mudou — não precisa nem chamar a API
+      // nada mudou — não precisa nem chamar a API (segurança extra, o botão já bloqueia isso)
       if (Object.keys(diff).length === 0) {
         fechar()
         return
@@ -691,8 +712,8 @@ async function salvar() {
           >
           <Button
             type="submit"
-            :disabled="salvando"
-            class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+            :disabled="salvando || (modoEdicao && !temAlteracoes)"
+            class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Loader2 v-if="salvando" class="size-4 animate-spin" />
             <Save v-else class="size-4" />
