@@ -1,6 +1,7 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { Loader2, Save } from 'lucide-vue-next'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
+import { Loader2, Plus, Save } from 'lucide-vue-next'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -23,39 +24,58 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useFeedback } from '@/composables/useFeedBack'
-import { brl, grupos, marcas, subgrupos } from '@/lib/mockDataProdutos'
+import { useGroups } from '@/composables/useGroups'
+import { productService } from '@/services/productService'
+import { supplierService } from '@/services/supplierService'
+
+// Componente do seu Modal de Grupos existente
+import GroupModal from '@/components/modal/group/NewGroup.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   produto: { type: Object, default: null },
 })
 
-const emit = defineEmits(['update:open', 'salvo'])
+const emit = defineEmits(['update:open'])
 
+const queryClient = useQueryClient()
 const { sucesso, erro } = useFeedback()
+
+// Instância do useGroups para carregar a lista de grupos da API
+const { groupsQuery } = useGroups()
+
+// Estado do Modal de Grupo On-the-Fly
+const modalGrupoAberto = ref(false)
 
 const NOME_MAX = 120
 const SKU_MAX = 30
 const DESCRICAO_MAX = 500
 
-const salvando = ref(false)
 const erros = reactive({})
 
 const form = reactive({
-  nome: '',
+  name: '',
   sku: '',
-  grupo: '',
-  subgrupo: '',
-  marca: '',
-  ativo: true,
-  descricao: '',
+  group_id: '',
+  supplier_id: null,
+  active: true,
+  description: '',
 })
 
-const editando = computed(() => !!props.produto)
+const editando = computed(() => !!props.produto?.id)
 
-// ---- Máscara monetária (centavos) — usada em custo e preço ----
+// Lista de grupos tratada vindos da Query (Trata .data ou retorno direto em array)
+const listaGrupos = computed(() => {
+  const dados = groupsQuery.data?.value
+  if (Array.isArray(dados)) return dados
+  return dados?.data || []
+})
+
+const carregandoGrupos = computed(() => groupsQuery.isLoading?.value ?? false)
+
+// ---- Máscaras Sanitizadas ----
 function criarMascaraMoeda(limiteDigitos = 8) {
-  const raw = ref('') // dígitos puros, representando centavos
+  const raw = ref('')
 
   const formatted = computed(() => {
     if (!raw.value) return ''
@@ -82,7 +102,6 @@ function criarMascaraMoeda(limiteDigitos = 8) {
   return { raw, formatted, valorNumerico, onInput, setValue }
 }
 
-// ---- Máscara numérica inteira — usada em estoque e estoque mínimo ----
 function criarMascaraInteiro(limiteDigitos = 6) {
   const raw = ref('0')
 
@@ -104,7 +123,10 @@ const preco = criarMascaraMoeda(8)
 const estoque = criarMascaraInteiro(6)
 const minimo = criarMascaraInteiro(6)
 
-// SKU: só letras, números, hífen e underscore — maiúsculas automáticas
+function brl(valor) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0)
+}
+
 const skuModel = computed({
   get: () => form.sku,
   set: (v) => {
@@ -116,20 +138,18 @@ const skuModel = computed({
 })
 
 const nomeModel = computed({
-  get: () => form.nome,
+  get: () => form.name,
   set: (v) => {
-    form.nome = (v ?? '').slice(0, NOME_MAX)
+    form.name = (v ?? '').slice(0, NOME_MAX)
   },
 })
 
 const descricaoModel = computed({
-  get: () => form.descricao,
+  get: () => form.description,
   set: (v) => {
-    form.descricao = (v ?? '').slice(0, DESCRICAO_MAX)
+    form.description = (v ?? '').slice(0, DESCRICAO_MAX)
   },
 })
-
-const subgruposFiltrados = computed(() => subgrupos.filter((s) => s.grupo === form.grupo))
 
 const margem = computed(() => {
   const p = preco.valorNumerico.value
@@ -137,16 +157,65 @@ const margem = computed(() => {
   return p > 0 && c > 0 ? ((p - c) / p) * 100 : null
 })
 
-// 🔴 AQUI — classe dinâmica da margem: verde se positiva, vermelha se negativa
 const margemClasse = computed(() => {
   if (margem.value === null) return ''
   return margem.value >= 0 ? 'text-emerald-500' : 'text-red-500'
 })
 
-function onGrupoChange(v) {
-  form.grupo = v
-  form.subgrupo = ''
-}
+// ---- TanStack Query (Fornecedores) ----
+const { data: listaFornecedores } = useQuery({
+  queryKey: ['suppliers'],
+  queryFn: () => supplierService.getAll(),
+  enabled: computed(() => props.open),
+  staleTime: 1000 * 60 * 10,
+})
+
+// ---- TanStack Mutation (Criação e Edição do Produto) ----
+const saveMutation = useMutation({
+  mutationFn: (payload) => {
+    if (editando.value) {
+      return productService.update(props.produto.id, payload)
+    }
+    return productService.create(payload)
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['products'] })
+    sucesso(
+      editando.value ? 'Produto atualizado' : 'Produto cadastrado',
+      editando.value ? 'As alterações foram salvas com sucesso.' : 'Produto adicionado ao estoque.',
+    )
+    fechar()
+  },
+  onError: (err) => {
+    const apiErrors = err.response?.data?.errors
+    if (apiErrors) {
+      Object.assign(erros, apiErrors)
+      erro('Verifique os campos destacados.')
+    } else {
+      erro('Erro ao salvar', err.response?.data?.message || 'Não foi possível salvar o produto.')
+    }
+  },
+})
+
+// Limpeza de erros dinâmicos
+watch(
+  () => form.name,
+  (v) => {
+    if (erros.name && v.trim().length >= 3) delete erros.name
+  },
+)
+watch(skuModel, (v) => {
+  if (erros.sku && v.trim()) delete erros.sku
+})
+watch(
+  () => form.group_id,
+  (v) => {
+    if (erros.group_id && v) delete erros.group_id
+  },
+)
+watch(preco.raw, (v) => {
+  if (erros.sale_price && Number(v) > 0) delete erros.sale_price
+})
 
 watch(
   () => props.open,
@@ -156,37 +225,28 @@ watch(
   },
 )
 
-// limpa os erros assim que o usuário corrige cada campo
-watch(() => form.nome, (v) => { if (erros.nome && v.trim().length >= 3) delete erros.nome })
-watch(skuModel, (v) => { if (erros.sku && v.trim()) delete erros.sku })
-watch(() => form.grupo, (v) => { if (erros.grupo && v) delete erros.grupo })
-watch(preco.raw, (v) => { if (erros.preco && Number(v) > 0) delete erros.preco })
-
 function preencherFormulario() {
   const p = props.produto
-
-  erros && Object.keys(erros).forEach((chave) => delete erros[chave])
+  Object.keys(erros).forEach((chave) => delete erros[chave])
 
   if (p) {
-    form.nome = p.nome ?? ''
+    form.name = p.name ?? ''
     form.sku = p.sku ?? ''
-    form.grupo = p.grupo ?? ''
-    form.subgrupo = p.subgrupo ?? ''
-    form.marca = p.marca ?? ''
-    form.ativo = p.status ? p.status === 'ativo' : true
-    form.descricao = p.descricao ?? ''
-    custo.setValue(p.custo)
-    preco.setValue(p.preco)
-    estoque.setValue(p.estoque)
-    minimo.setValue(p.minimo)
+    form.group_id = p.group_id ? String(p.group_id) : ''
+    form.supplier_id = p.supplier_id ? String(p.supplier_id) : 'none'
+    form.active = typeof p.active !== 'undefined' ? Boolean(p.active) : true
+    form.description = p.description ?? ''
+    custo.setValue(p.cost_price)
+    preco.setValue(p.sale_price)
+    estoque.setValue(p.stock_quantity)
+    minimo.setValue(p.min_stock_quantity)
   } else {
-    form.nome = ''
+    form.name = ''
     form.sku = ''
-    form.grupo = ''
-    form.subgrupo = ''
-    form.marca = ''
-    form.ativo = true
-    form.descricao = ''
+    form.group_id = ''
+    form.supplier_id = 'none'
+    form.active = true
+    form.description = ''
     custo.setValue('')
     preco.setValue('')
     estoque.setValue(0)
@@ -201,38 +261,36 @@ function fechar() {
 function validar() {
   Object.keys(erros).forEach((chave) => delete erros[chave])
 
-  if (form.nome.trim().length < 3) erros.nome = 'Informe o nome do produto.'
-  if (!form.sku.trim()) erros.sku = 'Informe um código para identificar o produto.'
-  if (!form.grupo) erros.grupo = 'Escolha um grupo.'
-  if (!(preco.valorNumerico.value > 0)) erros.preco = 'Informe o preço de venda.'
+  if (form.name.trim().length < 3) erros.name = 'Informe o nome do produto (mínimo 3 caracteres).'
+  if (!form.sku.trim()) erros.sku = 'Informe um código SKU válido.'
+  if (!form.group_id) erros.group_id = 'Selecione um grupo.'
+  if (!(preco.valorNumerico.value > 0)) erros.sale_price = 'Informe o preço de venda.'
 
   return Object.keys(erros).length === 0
 }
 
 function salvar() {
-  if (salvando.value) return
+  if (saveMutation.isPending.value) return
 
   if (!validar()) {
     erro('Confira os campos destacados antes de salvar.')
     return
   }
 
-  salvando.value = true
-  setTimeout(() => {
-    salvando.value = false
-    sucesso(
-      editando.value ? 'Produto atualizado' : 'Produto cadastrado',
-      editando.value ? 'Produto atualizado com sucesso.' : 'Produto cadastrado com sucesso.',
-    )
-    emit('salvo', {
-      ...form,
-      custo: custo.valorNumerico.value,
-      preco: preco.valorNumerico.value,
-      estoque: Number(estoque.raw.value),
-      minimo: Number(minimo.raw.value),
-    })
-    emit('update:open', false)
-  }, 900)
+  const payload = {
+    name: form.name.trim(),
+    sku: form.sku.trim(),
+    group_id: form.group_id,
+    supplier_id: form.supplier_id === 'none' || !form.supplier_id ? null : form.supplier_id,
+    active: form.active,
+    description: form.description ? form.description.trim() : null,
+    cost_price: custo.valorNumerico.value,
+    sale_price: preco.valorNumerico.value,
+    stock_quantity: Number(estoque.raw.value),
+    min_stock_quantity: Number(minimo.raw.value),
+  }
+
+  saveMutation.mutate(payload)
 }
 </script>
 
@@ -249,7 +307,6 @@ function salvar() {
       </DialogHeader>
 
       <form class="space-y-7 pt-1" @submit.prevent="salvar">
-        <!-- Identificação -->
         <section class="space-y-4">
           <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Identificação
@@ -264,22 +321,26 @@ function salvar() {
                 <Input
                   id="produto-nome"
                   v-model="nomeModel"
-                  placeholder="Ex.: Arroz Branco Tipo 1 — 5kg"
+                  placeholder="Ex.: Coca-Cola 2L"
                   :maxlength="NOME_MAX"
                   class="h-10 cursor-text pr-14"
-                  :aria-invalid="!!erros.nome"
+                  :aria-invalid="!!erros.name"
                 />
                 <span
                   class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
-                  :class="form.nome.length >= NOME_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                  :class="
+                    form.name.length >= NOME_MAX ? 'text-red-500' : 'text-muted-foreground/40'
+                  "
                 >
-                  {{ form.nome.length }}/{{ NOME_MAX }}
+                  {{ form.name.length }}/{{ NOME_MAX }}
                 </span>
               </div>
-              <p v-if="erros.nome" class="mt-1 text-xs text-destructive">{{ erros.nome }}</p>
+              <p v-if="erros.name" class="mt-1 text-xs text-destructive">
+                {{ Array.isArray(erros.name) ? erros.name[0] : erros.name }}
+              </p>
             </div>
 
-            <div class="grid grid-cols-4 gap-x-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
               <div>
                 <label for="produto-sku" class="mb-1.5 block text-sm font-medium text-foreground">
                   Código (SKU) <span class="text-destructive">*</span>
@@ -288,96 +349,114 @@ function salvar() {
                   <Input
                     id="produto-sku"
                     v-model="skuModel"
-                    placeholder="MER-0101"
+                    placeholder="BEB-0001"
                     :maxlength="SKU_MAX"
-                    class="h-10 cursor-text pr-12 uppercase"
+                    class="h-10 cursor-text pr-12 uppercase font-mono"
                     :aria-invalid="!!erros.sku"
                   />
                   <span
                     class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
-                    :class="form.sku.length >= SKU_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                    :class="
+                      form.sku.length >= SKU_MAX ? 'text-red-500' : 'text-muted-foreground/40'
+                    "
                   >
                     {{ form.sku.length }}/{{ SKU_MAX }}
                   </span>
                 </div>
-                <p v-if="erros.sku" class="mt-1 text-xs text-destructive">{{ erros.sku }}</p>
-                <p v-else class="mt-1 text-xs text-muted-foreground">Usado na busca rápida da venda.</p>
-              </div>
-
-              <div>
-                <label for="produto-marca" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Marca
-                </label>
-                <!-- 🔴 AQUI — !h-10 força a mesma altura do Input, independente do padrão interno do componente -->
-                <Select v-model="form.marca">
-                  <SelectTrigger id="produto-marca" class="!h-10 w-full cursor-pointer">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem v-for="m in marcas" :key="m.id" :value="m.nome" class="cursor-pointer">
-                      {{ m.nome }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <p v-if="erros.sku" class="mt-1 text-xs text-destructive">
+                  {{ Array.isArray(erros.sku) ? erros.sku[0] : erros.sku }}
+                </p>
+                <p v-else class="mt-1 text-xs text-muted-foreground">
+                  Usado na busca rápida de vendas.
+                </p>
               </div>
 
               <div>
                 <label for="produto-grupo" class="mb-1.5 block text-sm font-medium text-foreground">
                   Grupo <span class="text-destructive">*</span>
                 </label>
-                <!-- 🔴 AQUI -->
-                <Select :model-value="form.grupo" @update:model-value="onGrupoChange">
-                  <SelectTrigger id="produto-grupo" class="!h-10 w-full cursor-pointer" :aria-invalid="!!erros.grupo">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem v-for="g in grupos" :key="g.id" :value="g.nome" class="cursor-pointer">
-                      {{ g.nome }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p v-if="erros.grupo" class="mt-1 text-xs text-destructive">{{ erros.grupo }}</p>
+                <div class="flex gap-2">
+                  <Select v-model="form.group_id">
+                    <SelectTrigger
+                      id="produto-grupo"
+                      class="!h-10 w-full cursor-pointer"
+                      :aria-invalid="!!erros.group_id"
+                    >
+                      <SelectValue
+                        :placeholder="carregandoGrupos ? 'Carregando…' : 'Selecione um grupo'"
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem
+                        v-for="g in listaGrupos"
+                        :key="g.id"
+                        :value="String(g.id)"
+                        class="cursor-pointer"
+                      >
+                        {{ g.name }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    class="h-10 w-10 shrink-0 cursor-pointer"
+                    title="Criar novo grupo"
+                    @click="modalGrupoAberto = true"
+                  >
+                    <Plus class="size-4" />
+                  </Button>
+                </div>
+                <p v-if="erros.group_id" class="mt-1 text-xs text-destructive">
+                  {{ Array.isArray(erros.group_id) ? erros.group_id[0] : erros.group_id }}
+                </p>
               </div>
 
               <div>
-                <label for="produto-subgrupo" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Subgrupo
+                <label
+                  for="produto-fornecedor"
+                  class="mb-1.5 block text-sm font-medium text-foreground"
+                >
+                  Fornecedor (Opcional)
                 </label>
-                <!-- 🔴 AQUI -->
-                <Select v-model="form.subgrupo" :disabled="!form.grupo">
-                  <SelectTrigger id="produto-subgrupo" class="!h-10 w-full cursor-pointer">
-                    <SelectValue placeholder="Selecione" />
+                <Select v-model="form.supplier_id">
+                  <SelectTrigger id="produto-fornecedor" class="!h-10 w-full cursor-pointer">
+                    <SelectValue placeholder="Sem fornecedor (Avulso)" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none" class="cursor-pointer"
+                      >Sem fornecedor (Avulso)</SelectItem
+                    >
                     <SelectItem
-                      v-for="s in subgruposFiltrados"
+                      v-for="s in listaFornecedores"
                       :key="s.id"
-                      :value="s.nome"
+                      :value="String(s.id)"
                       class="cursor-pointer"
                     >
-                      {{ s.nome }}
+                      {{ s.name }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                <p v-if="!form.grupo" class="mt-1 text-xs text-muted-foreground">Escolha um grupo primeiro.</p>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- Preços e estoque -->
         <section class="space-y-4 border-t border-border pt-6">
           <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Preços e estoque
           </h3>
 
-          <div class="grid grid-cols-4 gap-x-6 gap-y-4">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
             <div>
               <label for="produto-custo" class="mb-1.5 block text-sm font-medium text-foreground">
                 Custo de compra
               </label>
               <div class="relative">
-                <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                <span
+                  class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                >
                   R$
                 </span>
                 <input
@@ -397,7 +476,9 @@ function salvar() {
                 Preço de venda <span class="text-destructive">*</span>
               </label>
               <div class="relative">
-                <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                <span
+                  class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                >
                   R$
                 </span>
                 <input
@@ -406,13 +487,15 @@ function salvar() {
                   inputmode="decimal"
                   placeholder="0,00"
                   class="h-10 w-full cursor-text rounded-md border border-input bg-transparent py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-                  :aria-invalid="!!erros.preco"
-                  :class="{ 'border-destructive': erros.preco }"
+                  :aria-invalid="!!erros.sale_price"
+                  :class="{ 'border-destructive': erros.sale_price }"
                   @input="preco.onInput"
                   @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                 />
               </div>
-              <p v-if="erros.preco" class="mt-1 text-xs text-destructive">{{ erros.preco }}</p>
+              <p v-if="erros.sale_price" class="mt-1 text-xs text-destructive">
+                {{ Array.isArray(erros.sale_price) ? erros.sale_price[0] : erros.sale_price }}
+              </p>
             </div>
 
             <div>
@@ -428,7 +511,6 @@ function salvar() {
                 @input="estoque.onInput"
                 @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
               />
-              <p class="mt-1 text-xs text-muted-foreground">Entradas futuras vêm das compras.</p>
             </div>
 
             <div>
@@ -444,22 +526,20 @@ function salvar() {
                 @input="minimo.onInput"
                 @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
               />
-              <p class="mt-1 text-xs text-muted-foreground">Avisamos quando chegar nesse número.</p>
             </div>
 
-            <!-- 🔴 AQUI — margemClasse aplica verde (positiva) ou vermelho (negativa) -->
             <div
               v-if="margem !== null"
-              class="col-span-4 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm"
+              class="col-span-2 md:col-span-4 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm"
             >
               Margem estimada:
               <span class="font-semibold" :class="margemClasse">{{ margem.toFixed(1) }}%</span>
-              · lucro de {{ brl(preco.valorNumerico.value - custo.valorNumerico.value) }} por unidade
+              · lucro de {{ brl(preco.valorNumerico.value - custo.valorNumerico.value) }} por
+              unidade
             </div>
           </div>
         </section>
 
-        <!-- Descrição e situação -->
         <section class="space-y-4 border-t border-border pt-6">
           <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Descrição e situação
@@ -473,46 +553,72 @@ function salvar() {
               <Textarea
                 id="produto-descricao"
                 v-model="descricaoModel"
-                placeholder="Informações que ajudam quem vende: tamanho, sabor, embalagem…"
+                placeholder="Observações complementares do produto…"
                 class="cursor-text pr-16"
                 rows="3"
                 :maxlength="DESCRICAO_MAX"
               />
               <span
                 class="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] font-medium tabular-nums transition-colors"
-                :class="form.descricao.length >= DESCRICAO_MAX ? 'text-red-500' : 'text-muted-foreground/40'"
+                :class="
+                  form.description.length >= DESCRICAO_MAX
+                    ? 'text-red-500'
+                    : 'text-muted-foreground/40'
+                "
               >
-                {{ form.descricao.length }}/{{ DESCRICAO_MAX }}
+                {{ form.description.length }}/{{ DESCRICAO_MAX }}
               </span>
             </div>
           </div>
 
-          <div class="flex items-center justify-between gap-3 rounded-md border border-input px-4 py-3">
+          <div
+            class="flex items-center justify-between gap-3 rounded-md border border-input px-4 py-3"
+          >
             <div class="space-y-0.5">
-              <label for="produto-ativo" class="text-sm font-medium text-foreground">Produto ativo</label>
-              <p class="text-xs text-muted-foreground">Produtos inativos não aparecem em novas vendas.</p>
+              <label for="produto-ativo" class="text-sm font-medium text-foreground"
+                >Produto ativo</label
+              >
+              <p class="text-xs text-muted-foreground">
+                Produtos inativos ficam ocultos na PDV/vendas.
+              </p>
             </div>
             <Switch
               id="produto-ativo"
-              v-model="form.ativo"
+              v-model="form.active"
               class="cursor-pointer data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-input"
             />
           </div>
         </section>
 
         <DialogFooter class="pt-3">
-          <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">Cancelar</Button>
+          <Button
+            type="button"
+            variant="outline"
+            class="cursor-pointer"
+            :disabled="saveMutation.isPending.value"
+            @click="fechar"
+          >
+            Cancelar
+          </Button>
           <Button
             type="submit"
-            :disabled="salvando"
-            class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+            :disabled="saveMutation.isPending.value"
+            class="cursor-pointer bg-emerald-500 font-medium text-black hover:bg-emerald-600 disabled:opacity-50"
           >
-            <Loader2 v-if="salvando" class="size-4 animate-spin" />
-            <Save v-else class="size-4" />
-            {{ salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Salvar produto' }}
+            <Loader2 v-if="saveMutation.isPending.value" class="size-4 animate-spin mr-1.5" />
+            <Save v-else class="size-4 mr-1.5" />
+            {{
+              saveMutation.isPending.value
+                ? 'Salvando…'
+                : editando
+                  ? 'Salvar alterações'
+                  : 'Salvar produto'
+            }}
           </Button>
         </DialogFooter>
       </form>
     </DialogContent>
   </Dialog>
+
+  <GroupModal v-model:open="modalGrupoAberto" />
 </template>
