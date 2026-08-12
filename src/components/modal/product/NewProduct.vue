@@ -28,8 +28,9 @@ import { useGroups } from '@/composables/useGroups'
 import { productService } from '@/services/productService'
 import { supplierService } from '@/services/supplierService'
 
-// Componente do seu Modal de Grupos existente
+// Componentes dos Modais On-the-Fly
 import GroupModal from '@/components/modal/group/NewGroup.vue'
+import SupplierModal from '@/components/modal/supplier/NewSupplier.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -44,8 +45,9 @@ const { sucesso, erro } = useFeedback()
 // Instância do useGroups para carregar a lista de grupos da API
 const { groupsQuery } = useGroups()
 
-// Estado do Modal de Grupo On-the-Fly
+// Estados dos Modais On-the-Fly
 const modalGrupoAberto = ref(false)
+const modalFornecedorAberto = ref(false)
 
 const NOME_MAX = 120
 const SKU_MAX = 30
@@ -57,14 +59,14 @@ const form = reactive({
   name: '',
   sku: '',
   group_id: '',
-  supplier_id: null,
+  supplier_id: 'none',
   active: true,
   description: '',
 })
 
 const editando = computed(() => !!props.produto?.id)
 
-// Lista de grupos tratada vindos da Query (Trata .data ou retorno direto em array)
+// Lista de grupos tratada vindos da Query
 const listaGrupos = computed(() => {
   const dados = groupsQuery.data?.value
   if (Array.isArray(dados)) return dados
@@ -163,7 +165,7 @@ const margemClasse = computed(() => {
 })
 
 // ---- TanStack Query (Fornecedores) ----
-const { data: listaFornecedores } = useQuery({
+const { data: listaFornecedores, isLoading: carregandoFornecedores } = useQuery({
   queryKey: ['suppliers'],
   queryFn: () => supplierService.getAll(),
   enabled: computed(() => props.open),
@@ -420,24 +422,40 @@ function salvar() {
                 >
                   Fornecedor (Opcional)
                 </label>
-                <Select v-model="form.supplier_id">
-                  <SelectTrigger id="produto-fornecedor" class="!h-10 w-full cursor-pointer">
-                    <SelectValue placeholder="Sem fornecedor (Avulso)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none" class="cursor-pointer"
-                      >Sem fornecedor (Avulso)</SelectItem
-                    >
-                    <SelectItem
-                      v-for="s in listaFornecedores"
-                      :key="s.id"
-                      :value="String(s.id)"
-                      class="cursor-pointer"
-                    >
-                      {{ s.name }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <div class="flex gap-2">
+                  <Select v-model="form.supplier_id">
+                    <SelectTrigger id="produto-fornecedor" class="!h-10 w-full cursor-pointer">
+                      <SelectValue
+                        :placeholder="
+                          carregandoFornecedores ? 'Carregando…' : 'Sem fornecedor (Avulso)'
+                        "
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" class="cursor-pointer"
+                        >Sem fornecedor (Avulso)</SelectItem
+                      >
+                      <SelectItem
+                        v-for="s in listaFornecedores"
+                        :key="s.id"
+                        :value="String(s.id)"
+                        class="cursor-pointer"
+                      >
+                        {{ s.name }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    class="h-10 w-10 shrink-0 cursor-pointer"
+                    title="Criar novo fornecedor"
+                    @click="modalFornecedorAberto = true"
+                  >
+                    <Plus class="size-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -621,4 +639,5 @@ function salvar() {
   </Dialog>
 
   <GroupModal v-model:open="modalGrupoAberto" />
+  <SupplierModal v-model:open="modalFornecedorAberto" />
 </template>
