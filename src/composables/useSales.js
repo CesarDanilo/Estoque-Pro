@@ -74,6 +74,13 @@ export function useSales(filters = {}) {
     return concluidas ? totalVendido.value / concluidas : 0
   })
 
+  // 5. Busca de uma venda específica com os itens completos (usado na edição)
+  // ATENÇÃO: assume que o backend expõe GET /sales/{id}. Se o seu saleService.js
+  // usar outro nome/endpoint, ajuste a implementação de saleService.getSale.
+  async function getSale(id) {
+    return saleService.getSale(id)
+  }
+
   return {
     // Estado do Query
     vendas,
@@ -88,10 +95,14 @@ export function useSales(filters = {}) {
     aguardandoPagamento,
     ticketMedio,
 
+    // Busca de detalhes (para edição)
+    getSale,
+
     // Mutations (Criar, Atualizar e Excluir)
     createSale: createSaleMutation.mutateAsync,
     isCreating: createSaleMutation.isPending,
 
+    // updateSale(id, data) — sempre chamar com dois argumentos posicionais
     updateSaleStatus: (id, data) => updateSaleMutation.mutateAsync({ id, data }),
     updateSale: (id, data) => updateSaleMutation.mutateAsync({ id, data }),
     isUpdating: updateSaleMutation.isPending,

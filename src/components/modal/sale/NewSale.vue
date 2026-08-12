@@ -43,6 +43,7 @@ import { useSales } from '@/composables/useSales'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
+  sale: { type: Object, default: null },
 })
 
 const emit = defineEmits(['update:open', 'created'])
@@ -60,7 +61,10 @@ const {
 } = usePeople()
 
 const { produtos, refetch: buscarProdutos, criar: criarProduto } = useProducts()
-const { createSale, isCreating } = useSales()
+const { createSale, updateSale, getSale, isCreating, isUpdating } = useSales()
+
+// Identifica se estamos em modo de edição
+const modoEdicao = computed(() => !!props.sale?.id)
 
 // Valor especial reservado para venda avulsa/sem cliente
 const ID_SEM_CLIENTE = 'sem_cliente'
@@ -76,23 +80,138 @@ const pagamento = ref('')
 const pessoaModalAberto = ref(false)
 const produtoModalAberto = ref(false)
 
+// Indica que estamos buscando os itens completos da venda no backend (modo edição)
+const carregandoItens = ref(false)
+
 const LIMITE_BUSCA_PRODUTO = 60
 
-// ---- Recarrega clientes e produtos ao abrir o modal ----
+// ---- Recarrega clientes e produtos ao abrir e popula se for edição ----
 watch(
   () => props.open,
-  (aberto) => {
-    if (aberto) {
-      resetar()
-      if (typeof buscarPessoas === 'function') {
-        buscarPessoas({ type: 'todos', active: 'ativo' })
-      }
-      if (typeof buscarProdutos === 'function') {
-        buscarProdutos()
-      }
+  async (aberto) => {
+    if (!aberto) return
+
+    // Limpa estritamente o campo de busca de produtos ao abrir
+    buscaBruta.value = ''
+    resetar()
+
+    const tarefas = []
+    if (typeof buscarPessoas === 'function') {
+      tarefas.push(buscarPessoas({ type: 'todos', active: 'ativo' }))
+    }
+    if (typeof buscarProdutos === 'function') {
+      tarefas.push(buscarProdutos())
+    }
+    // Aguarda pessoas/produtos para conseguir cruzar corretamente os itens
+    // da venda com o estoque atual dos produtos.
+    await Promise.all(tarefas)
+
+    if (props.sale) {
+      await carregarVendaParaEdicao(props.sale)
     }
   },
 )
+
+// ---- Carrega os dados completos da venda (incluindo itens) para edição ----
+async function carregarVendaParaEdicao(vendaBase) {
+  const idVenda = vendaBase?.id
+
+  const jaTemItens =
+    (Array.isArray(vendaBase?.items) && vendaBase.items.length > 0) ||
+    (Array.isArray(vendaBase?.sale_items) && vendaBase.sale_items.length > 0)
+
+  // Se o objeto recebido já vier com os itens (ex: outra tela que já carregou
+  // o detalhe completo), não precisa buscar de novo.
+  if (jaTemItens) {
+    popularDadosEdicao(vendaBase)
+    return
+  }
+
+  // A listagem de vendas normalmente não traz os itens, só o resumo.
+  // Buscamos o detalhe completo da venda para exibir o carrinho corretamente.
+  if (typeof getSale !== 'function' || !idVenda) {
+    popularDadosEdicao(vendaBase)
+    return
+  }
+
+  carregandoItens.value = true
+  try {
+    const resposta = await getSale(idVenda)
+    const detalhes = resposta?.data || resposta
+    popularDadosEdicao({ ...vendaBase, ...detalhes })
+  } catch (err) {
+    console.error('Erro ao carregar itens da venda:', err)
+    // Fallback: mantém cliente e pagamento preenchidos, mesmo sem os itens.
+    popularDadosEdicao(vendaBase)
+    erro(
+      'Não foi possível carregar os itens desta venda',
+      'Cliente e pagamento foram preenchidos. Revise os itens manualmente antes de salvar.',
+    )
+  } finally {
+    carregandoItens.value = false
+  }
+}
+
+// Popula os campos garantindo que os itens da venda apareçam de imediato
+function popularDadosEdicao(venda) {
+  clienteId.value =
+    venda.person_id || venda.customer_id
+      ? String(venda.person_id || venda.customer_id)
+      : ID_SEM_CLIENTE
+  pagamento.value = venda.payment_method || ''
+
+  // Descontos e acréscimos
+  desconto.setValue(venda.discount_value ?? venda.discount ?? 0)
+  descontoPercentual.setValue(venda.discount_percentage ?? 0)
+  acrescimo.setValue(venda.surcharge_value ?? venda.surcharge ?? 0)
+  acrescimoPercentual.setValue(venda.surcharge_percentage ?? 0)
+
+  // Extrai os itens da venda utilizando as informações diretas da venda
+  const listaItensBruta = venda.items || venda.sale_items || []
+  itens.value = mapItensDaVenda(listaItensBruta)
+}
+
+// Converte os itens brutos vindos da API para o formato usado no carrinho,
+// cruzando com o estoque atual do produto para calcular o teto disponível.
+function mapItensDaVenda(listaItensBruta) {
+  if (!Array.isArray(listaItensBruta)) return []
+
+  return listaItensBruta.map((i) => {
+    const prodId = i.product_id || i.product?.id || i.id
+    const produtoAtual = (produtos.value || []).find((p) => p.id === prodId)
+
+    const nomeProduto =
+      i.product_name ||
+      i.product?.name ||
+      i.product?.nome ||
+      produtoAtual?.nome ||
+      produtoAtual?.name ||
+      i.name ||
+      'Produto'
+
+    const precoUnitario = safeNumber(i.unit_price || i.price || 0)
+    const quantidade = safeNumber(i.quantity || i.qtd || 1)
+
+    // O estoque do produto já reflete a baixa feita por esta venda. Somamos
+    // a quantidade já registrada aqui para saber o teto real disponível
+    // durante a edição (senão o usuário não conseguiria nem manter a
+    // quantidade original).
+    const estoqueAtualProduto = safeNumber(
+      produtoAtual?.estoque ?? produtoAtual?.stock_quantity ?? 0,
+    )
+    const estoqueDisponivel = produtoAtual
+      ? estoqueAtualProduto + quantidade
+      : Math.max(quantidade, 9999)
+
+    return {
+      id: prodId,
+      nome: nomeProduto,
+      qtd: quantidade,
+      valor: precoUnitario,
+      estoque: estoqueDisponivel,
+    }
+  })
+}
 
 // ---- Filtro local de clientes no Select ----
 const clientesAtivos = computed(() => {
@@ -295,8 +414,8 @@ function resetar() {
 
 function adicionar(id) {
   const p = (produtos.value || []).find((x) => x.id === id)
-  const qtdEstoque = safeNumber(p?.estoque ?? p?.stock_quantity)
-  const precoVenda = safeNumber(p?.preco ?? p?.sale_price)
+  const qtdEstoque = safeNumber(p?.estoque ?? p?.stock_quantity ?? 9999)
+  const precoVenda = safeNumber(p?.preco ?? p?.sale_price ?? 0)
 
   if (!p || qtdEstoque <= 0) {
     erro('Produto sem estoque. Registre uma compra para repor.')
@@ -372,9 +491,9 @@ function fechar() {
   emit('update:open', false)
 }
 
-// ---- Finalização da Venda ----
-async function finalizar() {
-  if (isCreating.value) return
+// ---- Submissão (Criar ou Salvar Edição) ----
+async function salvar() {
+  if (isCreating.value || isUpdating.value || carregandoItens.value) return
 
   if (!clienteId.value) {
     erro('Cliente não informado', 'Selecione um cliente ou escolha a opção de Venda Avulsa.')
@@ -410,14 +529,21 @@ async function finalizar() {
       })),
     }
 
-    const response = await createSale(payload)
+    let response
+    if (modoEdicao.value) {
+      // updateSale(id, data) — dois argumentos posicionais, nunca um objeto único.
+      response = await updateSale(props.sale.id, payload)
+      sucesso('Venda atualizada.', 'As alterações foram salvas com sucesso.')
+    } else {
+      response = await createSale(payload)
+      sucesso('Venda finalizada.', 'Estoque atualizado com as saídas.')
+    }
 
-    sucesso('Venda finalizada.', 'Estoque atualizado com as saídas.')
     emit('created', response)
     fechar()
   } catch (err) {
     erro(
-      'Erro ao finalizar venda',
+      'Erro ao salvar venda',
       err?.response?.data?.message || 'Verifique os dados e tente novamente.',
     )
   }
@@ -428,15 +554,21 @@ async function finalizar() {
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent class="flex max-h-[90vh] flex-col w-[950px] max-w-[95vw] p-8 sm:max-w-[950px]">
       <DialogHeader class="space-y-1 shrink-0">
-        <DialogTitle class="text-xl font-semibold tracking-tight">Nova venda</DialogTitle>
+        <DialogTitle class="text-xl font-semibold tracking-tight">
+          {{ modoEdicao ? `Editar venda #${props.sale?.code || ''}` : 'Nova venda' }}
+        </DialogTitle>
         <DialogDescription class="text-sm text-muted-foreground">
-          Ao finalizar, o estoque dos produtos vendidos é reduzido.
+          {{
+            modoEdicao
+              ? 'Atualize os dados e itens desta venda.'
+              : 'Ao finalizar, o estoque dos produtos vendidos é reduzido.'
+          }}
         </DialogDescription>
       </DialogHeader>
 
       <form
         class="flex min-h-0 flex-1 flex-col justify-between space-y-6 pt-1"
-        @submit.prevent="finalizar"
+        @submit.prevent="salvar"
       >
         <div class="grid flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1fr)_340px]">
           <div class="flex flex-col space-y-6 overflow-y-auto pr-1">
@@ -627,8 +759,16 @@ async function finalizar() {
                 3. Itens da venda
               </h3>
 
+              <div
+                v-if="carregandoItens"
+                class="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-4 text-sm text-muted-foreground"
+              >
+                <Loader2 class="size-4 animate-spin" />
+                Carregando itens desta venda…
+              </div>
+
               <EmptyState
-                v-if="itens.length === 0"
+                v-else-if="itens.length === 0"
                 titulo="Carrinho vazio"
                 descricao="Adicione produtos para ver o valor total da venda."
               />
@@ -848,12 +988,18 @@ async function finalizar() {
             >
             <Button
               type="submit"
-              :disabled="isCreating"
+              :disabled="isCreating || isUpdating || carregandoItens"
               class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Loader2 v-if="isCreating" class="size-4 animate-spin" />
+              <Loader2 v-if="isCreating || isUpdating" class="size-4 animate-spin" />
               <ArrowUpRight v-else class="size-4" />
-              {{ isCreating ? 'Finalizando…' : 'Finalizar venda' }}
+              {{
+                isCreating || isUpdating
+                  ? 'Salvando…'
+                  : modoEdicao
+                    ? 'Salvar alterações'
+                    : 'Finalizar venda'
+              }}
             </Button>
           </div>
         </DialogFooter>

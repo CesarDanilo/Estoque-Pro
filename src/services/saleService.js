@@ -6,6 +6,13 @@ export const saleService = {
     return response.data
   },
 
+  // GET /api/sales/{id} — usado para carregar cliente, pagamento E os itens
+  // completos de uma venda antes de abrir o modal de edição.
+  async getSale(id) {
+    const response = await api.get(`/sales/${id}`)
+    return response.data
+  },
+
   async createSale(data) {
     const response = await api.post('/sales', data)
     return response.data

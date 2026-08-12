@@ -85,11 +85,23 @@ const busca = computed({
 
 const status = ref('todos')
 const formaPagamento = ref('todos')
+
+// ---- Filtro de data dinâmico: sem filtro / data específica / período ----
+const tipoData = ref('nenhum') // 'nenhum' | 'dia' | 'periodo'
+const dataUnica = ref('')
 const dataInicio = ref('')
 const dataFim = ref('')
 
+// Ao trocar o tipo de filtro, limpa os campos do modo anterior
+watch(tipoData, () => {
+  dataUnica.value = ''
+  dataInicio.value = ''
+  dataFim.value = ''
+})
+
 const pagina = ref(1)
 const modalAberto = ref(false)
+const vendaEmEdicao = ref(null) // Armazena a venda selecionada para visualização/edição
 
 // Estados para exclusão
 const vendaParaDeletar = ref(null)
@@ -109,20 +121,33 @@ function ordenarPor(campo) {
   }
 }
 
-watch([busca, status, formaPagamento, dataInicio, dataFim], () => {
+watch([busca, status, formaPagamento, tipoData, dataUnica, dataInicio, dataFim], () => {
   pagina.value = 1
 })
 
 // --- REQUISIÇÃO API ---
-const filtros = computed(() => ({
-  page: pagina.value,
-  per_page: PORPAGINA,
-  search: busca.value,
-  status: status.value,
-  payment_method: formaPagamento.value,
-  start_date: dataInicio.value,
-  end_date: dataFim.value,
-}))
+const filtros = computed(() => {
+  let start_date = ''
+  let end_date = ''
+
+  if (tipoData.value === 'dia' && dataUnica.value) {
+    start_date = dataUnica.value
+    end_date = dataUnica.value
+  } else if (tipoData.value === 'periodo') {
+    start_date = dataInicio.value
+    end_date = dataFim.value
+  }
+
+  return {
+    page: pagina.value,
+    per_page: PORPAGINA,
+    search: busca.value,
+    status: status.value,
+    payment_method: formaPagamento.value,
+    start_date,
+    end_date,
+  }
+})
 
 const {
   vendas,
@@ -135,7 +160,6 @@ const {
   refetch,
   deleteSale,
   updateSaleStatus,
-  updateSale,
 } = useSales(filtros)
 
 // --- ORDENAÇÃO LOCAL COM ESTABILIDADE DE DATAS ---
@@ -179,6 +203,8 @@ function limpar() {
   busca.value = ''
   status.value = 'todos'
   formaPagamento.value = 'todos'
+  tipoData.value = 'nenhum'
+  dataUnica.value = ''
   dataInicio.value = ''
   dataFim.value = ''
   sortCampo.value = null
@@ -186,17 +212,20 @@ function limpar() {
   pagina.value = 1
 }
 
-function abrirModal() {
+function abrirModalNovaVenda() {
+  vendaEmEdicao.value = null
   modalAberto.value = true
 }
 
-function vendaCriada() {
-  modalAberto.value = false
-  if (typeof refetch === 'function') refetch()
+function visualizarOuEditarVenda(venda) {
+  vendaEmEdicao.value = venda
+  modalAberto.value = true
 }
 
-function visualizarVenda(venda) {
-  sucesso('Venda selecionada', `Visualizando código #${venda.code}`)
+function vendaSalva() {
+  modalAberto.value = false
+  vendaEmEdicao.value = null
+  if (typeof refetch === 'function') refetch()
 }
 
 // --- ATUALIZAÇÃO DO STATUS NO BACK-END E LOCAL ---
@@ -206,8 +235,6 @@ async function alterarStatusVenda(venda, novoStatus) {
   try {
     if (typeof updateSaleStatus === 'function') {
       await updateSaleStatus(venda.id, { status: novoStatus })
-    } else if (typeof updateSale === 'function') {
-      await updateSale(venda.id, { status: novoStatus })
     }
 
     venda.status = novoStatus
@@ -270,7 +297,7 @@ async function executarExclusao() {
     <template #acoes>
       <Button
         class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
-        @click="abrirModal"
+        @click="abrirModalNovaVenda"
       >
         <Plus class="size-4" /> Nova venda
       </Button>
@@ -340,25 +367,52 @@ async function executarExclusao() {
             </SelectContent>
           </Select>
 
+          <!-- Filtro de data dinâmico: o usuário escolhe se quer filtrar por
+               um dia específico ou por um período, e só os campos relevantes
+               ao modo escolhido aparecem. -->
           <div class="flex items-center gap-1">
+            <Select v-model="tipoData">
+              <SelectTrigger
+                class="h-10 w-[172px] cursor-pointer bg-surface"
+                aria-label="Tipo de filtro por data"
+              >
+                <SelectValue placeholder="Filtrar por data" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="nenhum" class="cursor-pointer">Sem filtro de data</SelectItem>
+                <SelectItem value="dia" class="cursor-pointer">Data específica</SelectItem>
+                <SelectItem value="periodo" class="cursor-pointer">Período</SelectItem>
+              </SelectContent>
+            </Select>
+
             <input
-              v-model="dataInicio"
+              v-if="tipoData === 'dia'"
+              v-model="dataUnica"
               type="date"
-              class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
-              title="Data inicial"
+              class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              title="Data da venda"
             />
-            <span class="text-xs text-muted-foreground">até</span>
-            <input
-              v-model="dataFim"
-              type="date"
-              class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
-              title="Data final"
-            />
+
+            <template v-else-if="tipoData === 'periodo'">
+              <input
+                v-model="dataInicio"
+                type="date"
+                class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                title="Data inicial do período"
+              />
+              <span class="text-xs text-muted-foreground">até</span>
+              <input
+                v-model="dataFim"
+                type="date"
+                class="h-10 rounded-md border border-input bg-surface px-2 text-xs outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                title="Data final do período"
+              />
+            </template>
           </div>
 
           <Button
             v-if="
-              busca || status !== 'todos' || formaPagamento !== 'todos' || dataInicio || dataFim
+              busca || status !== 'todos' || formaPagamento !== 'todos' || tipoData !== 'nenhum'
             "
             variant="ghost"
             size="sm"
@@ -382,7 +436,7 @@ async function executarExclusao() {
             <Button variant="outline" class="cursor-pointer" @click="limpar">Limpar filtros</Button>
             <Button
               class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
-              @click="abrirModal"
+              @click="abrirModalNovaVenda"
             >
               Registrar venda
             </Button>
@@ -409,7 +463,7 @@ async function executarExclusao() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem class="cursor-pointer" @click="visualizarVenda(v)">
+                    <DropdownMenuItem class="cursor-pointer" @click="visualizarOuEditarVenda(v)">
                       <Eye class="mr-2 size-4" /> Ver / Editar
                     </DropdownMenuItem>
 
@@ -543,7 +597,7 @@ async function executarExclusao() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem class="cursor-pointer" @click="visualizarVenda(v)">
+                      <DropdownMenuItem class="cursor-pointer" @click="visualizarOuEditarVenda(v)">
                         <Eye class="mr-2 size-4" /> Ver / Editar
                       </DropdownMenuItem>
 
@@ -620,7 +674,7 @@ async function executarExclusao() {
     </Section>
   </div>
 
-  <NewSale v-model:open="modalAberto" @created="vendaCriada" />
+  <NewSale v-model:open="modalAberto" :sale="vendaEmEdicao" @created="vendaSalva" />
 
   <AlertDialog :open="modalDeletarAberto" @update:open="(v) => (modalDeletarAberto = v)">
     <AlertDialogContent>
