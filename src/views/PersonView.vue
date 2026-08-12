@@ -106,25 +106,15 @@ function abrirEdicao(pessoa) {
   modalAberto.value = true
 }
 
-async function pessoaCriada(pessoa) {
-  try {
-    await criar(pessoa)
-    sucesso('Pessoa cadastrada', 'Cadastro realizado com sucesso.')
-    pagina.value = 1
-    recarregar()
-  } catch (e) {
-    erroFeedback('Erro ao cadastrar', e.response?.data?.message || 'Tente novamente.')
-  }
+function pessoaCriada() {
+  sucesso('Pessoa cadastrada', 'Cadastro realizado com sucesso.')
+  pagina.value = 1
+  recarregar()
 }
 
-async function pessoaAtualizada(pessoa) {
-  try {
-    await atualizar(pessoa.id, pessoa)
-    sucesso('Pessoa atualizada', 'Dados atualizados com sucesso.')
-    recarregar()
-  } catch (e) {
-    erroFeedback('Erro ao atualizar', e.response?.data?.message || 'Tente novamente.')
-  }
+function pessoaAtualizada() {
+  sucesso('Pessoa atualizada', 'Dados atualizados com sucesso.')
+  recarregar()
 }
 
 async function confirmarExclusao() {
@@ -359,6 +349,8 @@ async function confirmarExclusao() {
   <NewPerson
     v-model:open="modalAberto"
     :pessoa="pessoaEditando"
+    :ao-criar="criar"
+    :ao-atualizar="atualizar"
     @created="pessoaCriada"
     @updated="pessoaAtualizada"
   />

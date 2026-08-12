@@ -32,11 +32,14 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   // quando preenchida, o modal entra em modo edição e popula os campos
   pessoa: { type: Object, default: null },
+  // funções que efetivamente chamam a API (vêm do usePeople, no componente pai)
+  aoCriar: { type: Function, required: true },
+  aoAtualizar: { type: Function, required: true },
 })
 
 const emit = defineEmits(['update:open', 'created', 'updated'])
 
-const { sucesso, erro } = useFeedback()
+const { erro } = useFeedback()
 
 const NOME_MAX = 120
 const EMAIL_MAX = 120
@@ -54,16 +57,18 @@ const erros = reactive({})
 
 const form = reactive({
   nome: '',
-  grupo: 'Cliente',
-  genero: 'Não informado',
+  type: 'individual', // 'individual' | 'company'
+  genero: 'other',    // 'male' | 'female' | 'other'
   nascimento: '',
   cidade: '',
   endereco: '',
   ativo: true,
-  observacoes: '',
 })
 
 const modoEdicao = computed(() => !!props.pessoa)
+
+// gênero/nascimento só fazem sentido pra pessoa física
+const ehPessoaFisica = computed(() => form.type === 'individual')
 
 function dataLocalHoje() {
   const agora = new Date()
@@ -98,8 +103,19 @@ watch(
   },
 )
 
-// remove o erro de nascimento assim que o usuário corrige a data,
-// sem precisar esperar um novo submit
+// se trocar pra pessoa jurídica, limpa gênero/nascimento (não fazem sentido pra CNPJ)
+watch(
+  () => form.type,
+  (tipo) => {
+    if (tipo === 'company') {
+      form.genero = 'other'
+      form.nascimento = ''
+      delete erros.nascimento
+    }
+  },
+)
+
+// remove o erro de nascimento assim que o usuário corrige a data
 watch(
   () => form.nascimento,
   (valor) => {
@@ -175,26 +191,24 @@ function preencherFormulario() {
 
   if (p) {
     form.nome = p.nome ?? ''
-    form.grupo = p.grupo ?? 'Cliente'
-    form.genero = p.genero ?? 'Não informado'
+    form.type = p.type ?? 'individual'
+    form.genero = p.genero ?? 'other'
     form.nascimento = p.nascimento ?? ''
     form.cidade = p.cidade ?? ''
     form.endereco = p.endereco ?? ''
     form.ativo = p.status ? p.status === 'ativo' : (p.ativo ?? true)
-    form.observacoes = p.observacoes ?? ''
     documento.setValue(p.documento ?? '')
     telefone.setValue(p.telefone ?? '')
     cep.setValue(p.cep ?? '')
     email.value = p.email ?? ''
   } else {
     form.nome = ''
-    form.grupo = 'Cliente'
-    form.genero = 'Não informado'
+    form.type = 'individual'
+    form.genero = 'other'
     form.nascimento = ''
     form.cidade = ''
     form.endereco = ''
     form.ativo = true
-    form.observacoes = ''
     documento.setValue('')
     telefone.setValue('')
     cep.setValue('')
@@ -217,14 +231,13 @@ function validar() {
     documento: documento.raw.value,
     telefone: telefone.raw.value,
     email: email.value,
-    grupo: form.grupo,
-    genero: form.genero,
-    nascimento: form.nascimento,
+    type: form.type,
+    genero: ehPessoaFisica.value ? form.genero : null,
+    nascimento: ehPessoaFisica.value ? form.nascimento : null,
     cep: cep.raw.value,
     cidade: form.cidade,
     endereco: form.endereco,
     ativo: form.ativo,
-    observacoes: form.observacoes,
   }
 
   const resultado = pessoaSchema.safeParse(payload)
@@ -256,25 +269,24 @@ function validar() {
     erros.cep = 'CEP deve conter apenas números.'
   }
 
-  // ninguém nasce no futuro — bloqueio de segurança além do `max` do input,
-  // cobrindo digitação manual ou colagem de data
+  // ninguém nasce no futuro — bloqueio de segurança além do `max` do input
   if (form.nascimento && form.nascimento > hoje) {
     erros.nascimento = 'Data de nascimento não pode ser no futuro.'
   }
 
-  // e-mail agora é obrigatório
+  // e-mail obrigatório
   if (!email.value.trim()) {
     erros.email = 'Informe o e-mail.'
   } else if (email.status === 'invalid') {
     erros.email = 'Informe um e-mail válido.'
   }
 
-  // endereço agora é obrigatório
+  // endereço obrigatório
   if (!form.endereco.trim()) {
     erros.endereco = 'Informe o endereço.'
   }
 
-  // cidade agora é obrigatória
+  // cidade obrigatória
   if (!form.cidade.trim()) {
     erros.cidade = 'Informe a cidade.'
   }
@@ -284,6 +296,35 @@ function validar() {
   }
 
   return resultado.data ?? payload
+}
+
+// Mapeia erros de validação vindos do Laravel (em inglês) de volta pros campos do form (português)
+const MAPA_CAMPOS_API = {
+  name: 'nome',
+  document: 'documento',
+  phone: 'telefone',
+  email: 'email',
+  gender: 'genero',
+  birth_date: 'nascimento',
+  zip_code: 'cep',
+  city: 'cidade',
+  address: 'endereco',
+  type: 'type',
+  active: 'ativo',
+}
+
+function aplicarErrosDaApi(e) {
+  const apiErrors = e.response?.data?.errors
+
+  if (apiErrors) {
+    Object.entries(apiErrors).forEach(([campo, mensagens]) => {
+      const chave = MAPA_CAMPOS_API[campo] || campo
+      erros[chave] = Array.isArray(mensagens) ? mensagens[0] : mensagens
+    })
+    erro('Confira os campos destacados antes de salvar.')
+  } else {
+    erro(e.response?.data?.message || 'Não foi possível salvar. Tente novamente.')
+  }
 }
 
 async function salvar() {
@@ -297,17 +338,16 @@ async function salvar() {
 
   salvando.value = true
   try {
-    await new Promise((resolve) => setTimeout(resolve, 900))
-
     if (modoEdicao.value) {
-      sucesso('Pessoa atualizada com sucesso.')
-      emit('updated', { id: props.pessoa.id, ...payload })
+      const pessoaSalva = await props.aoAtualizar(props.pessoa.id, payload)
+      emit('updated', pessoaSalva)
     } else {
-      sucesso('Pessoa cadastrada com sucesso.')
-      emit('created', payload)
+      const pessoaSalva = await props.aoCriar(payload)
+      emit('created', pessoaSalva)
     }
-
     fechar()
+  } catch (e) {
+    aplicarErrosDaApi(e)
   } finally {
     salvando.value = false
   }
@@ -382,29 +422,30 @@ async function salvar() {
               </div>
 
               <div>
-                <label for="grupo" class="mb-1.5 block text-sm font-medium text-foreground">Grupo</label>
-                <Select v-model="form.grupo">
-                  <SelectTrigger id="grupo" class="h-10 w-full cursor-pointer">
+                <label for="type" class="mb-1.5 block text-sm font-medium text-foreground">
+                  Tipo <span class="text-destructive">*</span>
+                </label>
+                <Select v-model="form.type">
+                  <SelectTrigger id="type" class="h-10 w-full cursor-pointer">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Cliente" class="cursor-pointer">Cliente</SelectItem>
-                    <SelectItem value="Fornecedor" class="cursor-pointer">Fornecedor</SelectItem>
-                    <SelectItem value="Colaborador" class="cursor-pointer">Colaborador</SelectItem>
+                    <SelectItem value="individual" class="cursor-pointer">Pessoa física</SelectItem>
+                    <SelectItem value="company" class="cursor-pointer">Pessoa jurídica</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
                 <label for="genero" class="mb-1.5 block text-sm font-medium text-foreground">Gênero</label>
-                <Select v-model="form.genero">
+                <Select v-model="form.genero" :disabled="!ehPessoaFisica">
                   <SelectTrigger id="genero" class="h-10 w-full cursor-pointer">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Feminino" class="cursor-pointer">Feminino</SelectItem>
-                    <SelectItem value="Masculino" class="cursor-pointer">Masculino</SelectItem>
-                    <SelectItem value="Não informado" class="cursor-pointer">Prefiro não informar</SelectItem>
+                    <SelectItem value="female" class="cursor-pointer">Feminino</SelectItem>
+                    <SelectItem value="male" class="cursor-pointer">Masculino</SelectItem>
+                    <SelectItem value="other" class="cursor-pointer">Prefiro não informar</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -418,6 +459,7 @@ async function salvar() {
                   v-model="form.nascimento"
                   type="date"
                   :max="hoje"
+                  :disabled="!ehPessoaFisica"
                   class="h-10 cursor-text"
                   :aria-invalid="!!erros.nascimento"
                 />
