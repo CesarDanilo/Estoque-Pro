@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Loader2, MoreHorizontal, Package, Pencil, Plus, Power, Trash2 } from 'lucide-vue-next'
 
 import { Button } from '@/components/ui/button'
@@ -37,7 +37,7 @@ import NewProduct from '@/components/modal/product/NewProduct.vue'
 
 import { useFeedback } from '@/composables/useFeedBack'
 import { productService } from '@/services/productService'
-import { groupService } from '@/services/groupService' // Assumindo serviço de grupos existente
+import { groupService } from '@/services/groupService'
 
 onMounted(() => {
   document.title = 'Produtos — Estoque Pro'
@@ -74,8 +74,8 @@ function formatarMoeda(valor) {
 }
 
 function calcularNivelEstoque(p) {
-  const atual = Number(p.stock_quantity) || 0
-  const min = Number(p.min_stock_quantity) || 0
+  const atual = Number(p.stock_quantity ?? p.estoque) || 0
+  const min = Number(p.min_stock_quantity ?? p.minimo) || 0
 
   if (atual === 0) return 'sem'
   if (atual <= min) return 'baixo'
@@ -84,7 +84,7 @@ function calcularNivelEstoque(p) {
 
 function tomEstoque(p) {
   const nivel = calcularNivelEstoque(p)
-  const qtd = p.stock_quantity || 0
+  const qtd = p.stock_quantity ?? p.estoque ?? 0
 
   if (nivel === 'sem') return { tom: 'danger', texto: 'Sem estoque' }
   if (nivel === 'baixo') return { tom: 'warning', texto: `Baixo · ${qtd} un.` }
@@ -96,21 +96,31 @@ function resetPag() {
 }
 
 // ---- TanStack Query: Carregar Grupos para o Filtro ----
-const { data: listaGrupos } = useQuery({
+const { data: listaGruposData } = useQuery({
   queryKey: ['groups'],
   queryFn: () => groupService.getAll(),
   staleTime: 1000 * 60 * 10,
 })
 
+const listaGrupos = computed(() => {
+  if (Array.isArray(listaGruposData?.value)) return listaGruposData.value
+  return listaGruposData?.value?.data || []
+})
+
 // ---- TanStack Query: Buscar Lista de Produtos ----
 const {
-  data: listaProdutos,
+  data: rawProdutos,
   isLoading,
   isError,
 } = useQuery({
   queryKey: ['products'],
   queryFn: () => productService.getAll(),
   staleTime: 1000 * 60 * 5,
+})
+
+const listaProdutos = computed(() => {
+  if (Array.isArray(rawProdutos?.value)) return rawProdutos.value
+  return rawProdutos?.value?.data || []
 })
 
 // ---- TanStack Mutations ----
@@ -120,7 +130,7 @@ const deleteMutation = useMutation({
     queryClient.invalidateQueries({ queryKey: ['products'] })
     sucesso(
       'Produto excluído',
-      `O produto "${produtoParaExcluir.value?.name || ''}" foi removido com sucesso.`,
+      `O produto "${produtoParaExcluir.value?.name || produtoParaExcluir.value?.nome || ''}" foi removido com sucesso.`,
     )
     produtoParaExcluir.value = null
   },
@@ -146,16 +156,18 @@ const toggleStatusMutation = useMutation({
 
 // ---- Computados: Filtragem Local e Paginação ----
 const produtosFiltrados = computed(() => {
-  if (!listaProdutos.value) return []
+  const produtos = listaProdutos.value
+  if (!produtos || !produtos.length) return []
 
-  return listaProdutos.value.filter((p) => {
+  return produtos.filter((p) => {
     // Filtro Grupo
     if (grupoFiltro.value !== 'todos' && String(p.group_id) !== String(grupoFiltro.value))
       return false
 
     // Filtro Status
-    if (statusFiltro.value === 'ativo' && !p.active) return false
-    if (statusFiltro.value === 'inativo' && p.active) return false
+    const ativo = typeof p.active !== 'undefined' ? p.active : p.ativo
+    if (statusFiltro.value === 'ativo' && !ativo) return false
+    if (statusFiltro.value === 'inativo' && ativo) return false
 
     // Filtro Nível de Estoque
     if (estoqueFiltro.value !== 'todos' && calcularNivelEstoque(p) !== estoqueFiltro.value)
@@ -165,10 +177,10 @@ const produtosFiltrados = computed(() => {
     const termo = busca.value.trim().toLowerCase()
     if (termo === '') return true
 
-    const nome = p.name?.toLowerCase() || ''
-    const sku = p.sku?.toLowerCase() || ''
-    const grupoNome = p.group?.name?.toLowerCase() || ''
-    const fornecedorNome = p.supplier?.name?.toLowerCase() || ''
+    const nome = (p.name || p.nome || '').toLowerCase()
+    const sku = (p.sku || '').toLowerCase()
+    const grupoNome = (p.group?.name || p.grupo?.nome || '').toLowerCase()
+    const fornecedorNome = (p.supplier?.name || p.fornecedor?.nome || '').toLowerCase()
 
     return (
       nome.includes(termo) ||
@@ -188,15 +200,15 @@ const visiveis = computed(() =>
 )
 
 // ---- Métricas Rápidas ----
-const totalProdutos = computed(() => listaProdutos.value?.length || 0)
+const totalProdutos = computed(() => listaProdutos.value.length)
 const totalNormal = computed(
-  () => listaProdutos.value?.filter((p) => calcularNivelEstoque(p) === 'normal').length || 0,
+  () => listaProdutos.value.filter((p) => calcularNivelEstoque(p) === 'normal').length,
 )
 const totalBaixo = computed(
-  () => listaProdutos.value?.filter((p) => calcularNivelEstoque(p) === 'baixo').length || 0,
+  () => listaProdutos.value.filter((p) => calcularNivelEstoque(p) === 'baixo').length,
 )
 const totalSem = computed(
-  () => listaProdutos.value?.filter((p) => calcularNivelEstoque(p) === 'sem').length || 0,
+  () => listaProdutos.value.filter((p) => calcularNivelEstoque(p) === 'sem').length,
 )
 
 // ---- Ações ----
@@ -211,11 +223,12 @@ function abrirEdicao(p) {
 }
 
 function alternarStatus(p) {
+  const ativoAtual = typeof p.active !== 'undefined' ? p.active : p.ativo
   toggleStatusMutation.mutate({
     id: p.id,
     payload: {
       ...p,
-      active: !p.active,
+      active: !ativoAtual,
     },
   })
 }
@@ -224,6 +237,10 @@ function confirmarExclusao() {
   const id = produtoParaExcluir.value?.id
   if (!id || deleteMutation.isPending.value) return
   deleteMutation.mutate(id)
+}
+
+function aoSalvarProduto() {
+  queryClient.invalidateQueries({ queryKey: ['products'] })
 }
 </script>
 
@@ -359,22 +376,22 @@ function confirmarExclusao() {
             <li v-for="p in visiveis" :key="p.id" class="space-y-2 px-4 py-3.5">
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                 <div class="min-w-0">
-                  <p class="truncate text-sm font-medium">{{ p.name }}</p>
+                  <p class="truncate text-sm font-medium">{{ p.name || p.nome }}</p>
                   <p class="truncate text-xs text-muted-foreground font-mono">
-                    {{ p.sku }} · {{ p.group?.name || 'Sem grupo' }}
+                    {{ p.sku }} · {{ p.group?.name || p.grupo?.nome || 'Sem grupo' }}
                   </p>
                 </div>
                 <span class="shrink-0 text-sm font-semibold">{{
-                  formatarMoeda(p.sale_price)
+                  formatarMoeda(p.sale_price ?? p.preco)
                 }}</span>
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <StatusPill :tom="tomEstoque(p).tom">{{ tomEstoque(p).texto }}</StatusPill>
-                <StatusPill :tom="p.active ? 'info' : 'neutral'">
-                  {{ p.active ? 'Ativo' : 'Inativo' }}
+                <StatusPill :tom="(p.active ?? p.ativo) ? 'info' : 'neutral'">
+                  {{ (p.active ?? p.ativo) ? 'Ativo' : 'Inativo' }}
                 </StatusPill>
-                <span v-if="p.supplier" class="text-xs text-muted-foreground">
-                  {{ p.supplier.name }}
+                <span v-if="p.supplier || p.fornecedor" class="text-xs text-muted-foreground">
+                  {{ p.supplier?.name || p.fornecedor?.nome }}
                 </span>
               </div>
             </li>
@@ -396,24 +413,24 @@ function confirmarExclusao() {
               <tbody class="divide-y divide-border">
                 <tr v-for="p in visiveis" :key="p.id" class="transition-colors hover:bg-muted/60">
                   <td class="max-w-[260px] px-5 py-3">
-                    <p class="truncate font-medium text-foreground">{{ p.name }}</p>
+                    <p class="truncate font-medium text-foreground">{{ p.name || p.nome }}</p>
                     <p class="truncate text-xs font-mono text-muted-foreground">{{ p.sku }}</p>
                   </td>
                   <td class="px-4 py-3 text-muted-foreground">
-                    {{ p.group?.name || '-' }}
+                    {{ p.group?.name || p.grupo?.nome || '-' }}
                   </td>
                   <td class="px-4 py-3 text-muted-foreground">
-                    {{ p.supplier?.name || 'Avulso / Sem fornecedor' }}
+                    {{ p.supplier?.name || p.fornecedor?.nome || 'Avulso / Sem fornecedor' }}
                   </td>
                   <td class="px-4 py-3 text-right font-medium">
-                    {{ formatarMoeda(p.sale_price) }}
+                    {{ formatarMoeda(p.sale_price ?? p.preco) }}
                   </td>
                   <td class="px-4 py-3">
                     <StatusPill :tom="tomEstoque(p).tom">{{ tomEstoque(p).texto }}</StatusPill>
                   </td>
                   <td class="px-4 py-3">
-                    <StatusPill :tom="p.active ? 'info' : 'neutral'">
-                      {{ p.active ? 'Ativo' : 'Inativo' }}
+                    <StatusPill :tom="(p.active ?? p.ativo) ? 'info' : 'neutral'">
+                      {{ (p.active ?? p.ativo) ? 'Ativo' : 'Inativo' }}
                     </StatusPill>
                   </td>
                   <td class="px-4 py-3 text-right">
@@ -423,7 +440,7 @@ function confirmarExclusao() {
                           variant="ghost"
                           size="icon"
                           class="cursor-pointer"
-                          :aria-label="`Ações para ${p.name}`"
+                          :aria-label="`Ações para ${p.name || p.nome}`"
                         >
                           <MoreHorizontal class="size-4" />
                         </Button>
@@ -434,7 +451,7 @@ function confirmarExclusao() {
                         </DropdownMenuItem>
                         <DropdownMenuItem class="cursor-pointer" @click="alternarStatus(p)">
                           <Power class="size-4" />
-                          {{ p.active ? 'Inativar' : 'Ativar' }}
+                          {{ (p.active ?? p.ativo) ? 'Inativar' : 'Ativar' }}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           class="cursor-pointer text-destructive"
@@ -472,7 +489,7 @@ function confirmarExclusao() {
                 size="sm"
                 class="cursor-pointer disabled:cursor-not-allowed"
                 :disabled="paginaAtual === totalPaginas"
-                @click="pagina = paginaAtual + 1"
+                @click="pagina = paginaAtual + totalPaginas > 0 ? 0 : 0"
               >
                 Próxima
               </Button>
@@ -482,7 +499,7 @@ function confirmarExclusao() {
       </Section>
     </div>
 
-    <NewProduct v-model:open="modalAberto" :produto="produtoEditando" />
+    <NewProduct v-model:open="modalAberto" :produto="produtoEditando" @salvo="aoSalvarProduto" />
 
     <AlertDialog
       :open="!!produtoParaExcluir"
@@ -494,7 +511,9 @@ function confirmarExclusao() {
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Excluir {{ produtoParaExcluir?.name }}?</AlertDialogTitle>
+          <AlertDialogTitle>
+            Excluir {{ produtoParaExcluir?.name || produtoParaExcluir?.nome }}?
+          </AlertDialogTitle>
           <AlertDialogDescription>
             O produto sairá do catálogo e não poderá ser selecionado em novas vendas/compras. O
             histórico existente não será alterado.

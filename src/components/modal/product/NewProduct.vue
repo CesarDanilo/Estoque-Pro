@@ -35,9 +35,12 @@ import SupplierModal from '@/components/modal/supplier/NewSupplier.vue'
 const props = defineProps({
   open: { type: Boolean, default: false },
   produto: { type: Object, default: null },
+  // Callbacks opcionais mantidos para compatibilidade
+  aoCriar: { type: Function, default: null },
+  aoAtualizar: { type: Function, default: null },
 })
 
-const emit = defineEmits(['update:open'])
+const emit = defineEmits(['update:open', 'created', 'updated', 'salvo'])
 
 const queryClient = useQueryClient()
 const { sucesso, erro } = useFeedback()
@@ -68,12 +71,12 @@ const editando = computed(() => !!props.produto?.id)
 
 // Lista de grupos tratada vindos da Query
 const listaGrupos = computed(() => {
-  const dados = groupsQuery.data?.value
+  const dados = groupsQuery?.data?.value
   if (Array.isArray(dados)) return dados
   return dados?.data || []
 })
 
-const carregandoGrupos = computed(() => groupsQuery.isLoading?.value ?? false)
+const carregandoGrupos = computed(() => groupsQuery?.isLoading?.value ?? false)
 
 // ---- Máscaras Sanitizadas ----
 function criarMascaraMoeda(limiteDigitos = 8) {
@@ -174,18 +177,33 @@ const { data: listaFornecedores, isLoading: carregandoFornecedores } = useQuery(
 
 // ---- TanStack Mutation (Criação e Edição do Produto) ----
 const saveMutation = useMutation({
-  mutationFn: (payload) => {
+  mutationFn: async (payload) => {
     if (editando.value) {
-      return productService.update(props.produto.id, payload)
+      if (props.aoAtualizar) return await props.aoAtualizar(props.produto.id, payload)
+      return await productService.update(props.produto.id, payload)
     }
-    return productService.create(payload)
+    if (props.aoCriar) return await props.aoCriar(payload)
+    return await productService.create(payload)
   },
-  onSuccess: () => {
+  onSuccess: (res) => {
+    // Invalida cache global do TanStack Query
     queryClient.invalidateQueries({ queryKey: ['products'] })
+
+    const produtoSalvo = res?.data || res
+
     sucesso(
       editando.value ? 'Produto atualizado' : 'Produto cadastrado',
       editando.value ? 'As alterações foram salvas com sucesso.' : 'Produto adicionado ao estoque.',
     )
+
+    // Emite eventos com os dados do produto salvo para componentes pai (ex: Vendas)
+    if (editando.value) {
+      emit('updated', produtoSalvo)
+    } else {
+      emit('created', produtoSalvo)
+    }
+    emit('salvo', produtoSalvo)
+
     fechar()
   },
   onError: (err) => {
@@ -232,16 +250,16 @@ function preencherFormulario() {
   Object.keys(erros).forEach((chave) => delete erros[chave])
 
   if (p) {
-    form.name = p.name ?? ''
+    form.name = p.name ?? p.nome ?? ''
     form.sku = p.sku ?? ''
     form.group_id = p.group_id ? String(p.group_id) : ''
     form.supplier_id = p.supplier_id ? String(p.supplier_id) : 'none'
     form.active = typeof p.active !== 'undefined' ? Boolean(p.active) : true
     form.description = p.description ?? ''
-    custo.setValue(p.cost_price)
-    preco.setValue(p.sale_price)
-    estoque.setValue(p.stock_quantity)
-    minimo.setValue(p.min_stock_quantity)
+    custo.setValue(p.cost_price ?? p.custo)
+    preco.setValue(p.sale_price ?? p.preco)
+    estoque.setValue(p.stock_quantity ?? p.estoque)
+    minimo.setValue(p.min_stock_quantity ?? p.minimo)
   } else {
     form.name = ''
     form.sku = ''

@@ -37,7 +37,9 @@ import NewPerson from '@/components/modal/person/NewPerson.vue'
 import NewProduct from '@/components/modal/product/NewProduct.vue'
 
 import { useFeedback } from '@/composables/useFeedBack'
-import { brl, nivelEstoque, pessoas, produtos } from '@/lib/mockData'
+import { usePeople } from '@/composables/usePeople'
+import { useProducts } from '@/composables/useProducts'
+import { useSales } from '@/composables/useSales'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -47,21 +49,63 @@ const emit = defineEmits(['update:open', 'created'])
 
 const { sucesso, erro } = useFeedback()
 
-const cliente = ref('')
+// Composables para carregar dados do Backend/Store
+const {
+  pessoas,
+  buscar: buscarPessoas,
+  criar: criarPessoa,
+  atualizar: atualizarPessoa,
+  atualizarParcial: atualizarParcialPessoa,
+} = usePeople()
+
+// Mapeado refetch como buscarProdutos para manter compatibilidade com o TanStack Query
+const { produtos, refetch: buscarProdutos, criar: criarProduto } = useProducts()
+const { createSale, isCreating } = useSales()
+
+// Estados da Venda
+const clienteId = ref('')
 const semCliente = ref(false)
 const buscaCliente = ref('')
 const buscaBruta = ref('')
 const itens = ref([])
 const pagamento = ref('')
-const salvando = ref(false)
 
-// controla os modais aninhados de cadastro rápido
+// Controle dos modais aninhados
 const pessoaModalAberto = ref(false)
 const produtoModalAberto = ref(false)
 
-// ---- limite de caracteres da busca de produto ----
 const LIMITE_BUSCA_PRODUTO = 60
 
+// ---- Recarrega clientes e produtos ao abrir o modal ----
+watch(
+  () => props.open,
+  (aberto) => {
+    if (aberto) {
+      resetar()
+      if (typeof buscarPessoas === 'function') {
+        buscarPessoas({ type: 'todos', active: 'ativo' })
+      }
+      if (typeof buscarProdutos === 'function') {
+        buscarProdutos()
+      }
+    }
+  },
+)
+
+// ---- Filtro local de clientes no Select ----
+const clientesAtivos = computed(() => {
+  const termo = buscaCliente.value.trim().toLowerCase()
+  return (pessoas.value || [])
+    .filter((p) => p.status === 'ativo' || p.active)
+    .filter((p) => {
+      if (!termo) return true
+      const nomeMatch = (p.nome || p.name || '').toLowerCase().includes(termo)
+      const docMatch = (p.documento || p.document || '').toLowerCase().includes(termo)
+      return nomeMatch || docMatch
+    })
+})
+
+// ---- Filtro local de busca de produtos ----
 const busca = computed({
   get: () => buscaBruta.value,
   set: (valor) => {
@@ -69,13 +113,35 @@ const busca = computed({
   },
 })
 
-// ---- Helper para garantir números válidos ----
+const disponiveis = computed(() => {
+  const termo = busca.value.trim().toLowerCase()
+  if (termo === '') return []
+  return (produtos.value || []).filter(
+    (p) =>
+      (p.nome || p.name || '').toLowerCase().includes(termo) ||
+      (p.sku || '').toLowerCase().includes(termo),
+  )
+})
+
+// ---- Helpers de cálculo ----
 function safeNumber(val) {
   const num = Number(val)
   return isNaN(num) ? 0 : num
 }
 
-// ---- Máscara monetária (centavos) ----
+function brl(valor) {
+  return safeNumber(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function nivelEstoque(p) {
+  const qtd = safeNumber(p.estoque ?? p.stock_quantity)
+  const min = safeNumber(p.minimo ?? p.min_stock_quantity)
+  if (qtd <= 0) return 'sem'
+  if (qtd <= min) return 'baixo'
+  return 'ok'
+}
+
+// ---- Máscaras Financeiras ----
 function criarMascaraMoeda(limiteDigitos = 8) {
   const raw = ref('')
 
@@ -87,14 +153,15 @@ function criarMascaraMoeda(limiteDigitos = 8) {
 
   const formatted = computed(() => {
     if (!raw.value) return ''
-    const numero = valorNumerico.value
-    return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return valorNumerico.value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
   })
 
   function onInput(evento) {
     const val = evento?.target?.value || ''
-    const digitos = val.replace(/\D/g, '').slice(0, limiteDigitos)
-    raw.value = digitos
+    raw.value = val.replace(/\D/g, '').slice(0, limiteDigitos)
   }
 
   function setValue(numero) {
@@ -108,7 +175,6 @@ function criarMascaraMoeda(limiteDigitos = 8) {
   return { raw, formatted, valorNumerico, onInput, setValue }
 }
 
-// ---- Máscara percentual (0 a 100,00%) ----
 function criarMascaraPercentual(limiteDigitos = 5) {
   const raw = ref('')
 
@@ -120,8 +186,10 @@ function criarMascaraPercentual(limiteDigitos = 5) {
 
   const formatted = computed(() => {
     if (!raw.value) return ''
-    const numero = valorNumerico.value
-    return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return valorNumerico.value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
   })
 
   function onInput(evento) {
@@ -142,44 +210,17 @@ function criarMascaraPercentual(limiteDigitos = 5) {
   return { raw, formatted, valorNumerico, onInput, setValue }
 }
 
-// Desconto
 const desconto = criarMascaraMoeda(8)
 const descontoPercentual = criarMascaraPercentual(5)
-
 const descontoValorPreenchido = computed(() => desconto.valorNumerico.value > 0)
 const descontoPercentualPreenchido = computed(() => descontoPercentual.valorNumerico.value > 0)
 
-// Acréscimo
 const acrescimo = criarMascaraMoeda(8)
 const acrescimoPercentual = criarMascaraPercentual(5)
-
 const acrescimoValorPreenchido = computed(() => acrescimo.valorNumerico.value > 0)
 const acrescimoPercentualPreenchido = computed(() => acrescimoPercentual.valorNumerico.value > 0)
 
-// Clientes ativos
-const clientesAtivos = computed(() => {
-  const termo = buscaCliente.value.trim().toLowerCase()
-
-  return pessoas
-    .filter((p) => p.grupo === 'Cliente' && p.status === 'ativo')
-    .filter((p) => {
-      if (!termo) return true
-      const nomeMatch = p.nome?.toLowerCase().includes(termo)
-      const docMatch = p.documento?.toLowerCase().includes(termo)
-      return nomeMatch || docMatch
-    })
-    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
-})
-
-const disponiveis = computed(() => {
-  const termo = busca.value.trim().toLowerCase()
-  if (termo === '') return []
-  return produtos.filter(
-    (p) => p.status === 'ativo' && [p.nome, p.sku].some((c) => c.toLowerCase().includes(termo))
-  )
-})
-
-// ---- Navegação por teclado na lista de produtos ----
+// ---- Navegação de busca por teclado ----
 const indiceAtivo = ref(-1)
 
 watch(busca, () => {
@@ -206,6 +247,7 @@ function onBuscaProdutoKeydown(evento) {
   }
 }
 
+// Totais
 const subtotal = computed(() => {
   const res = itens.value.reduce((s, i) => s + safeNumber(i.qtd) * safeNumber(i.valor), 0)
   return safeNumber(res)
@@ -236,31 +278,17 @@ const total = computed(() => {
   return Math.max(0, safeNumber(res))
 })
 
-// ---- VALIDAÇÃO DO CLIENTE ----
 const temClienteValido = computed(() => {
-  // EXCEÇÃO: Se marcou "sem cliente", ignora a seleção do cliente e libera a validação
-  if (Boolean(semCliente.value) === true) {
-    return true
-  }
-  // Se não marcou "sem cliente", exige obrigatoriamente um cliente selecionado
-  return Boolean(cliente.value && String(cliente.value).trim() !== '')
+  if (Boolean(semCliente.value) === true) return true
+  return Boolean(clienteId.value && String(clienteId.value).trim() !== '')
 })
 
 watch(semCliente, (marcado) => {
-  if (marcado) {
-    cliente.value = ''
-  }
+  if (marcado) clienteId.value = ''
 })
 
-watch(
-  () => props.open,
-  (aberto) => {
-    if (aberto) resetar()
-  }
-)
-
 function resetar() {
-  cliente.value = ''
+  clienteId.value = ''
   semCliente.value = false
   buscaCliente.value = ''
   buscaBruta.value = ''
@@ -270,26 +298,34 @@ function resetar() {
   acrescimo.setValue('')
   acrescimoPercentual.setValue('')
   pagamento.value = ''
-  salvando.value = false
   indiceAtivo.value = -1
 }
 
 function adicionar(id) {
-  const p = produtos.find((x) => x.id === id)
-  if (!p || p.estoque === 0) {
+  const p = (produtos.value || []).find((x) => x.id === id)
+  const qtdEstoque = safeNumber(p?.estoque ?? p?.stock_quantity)
+  const precoVenda = safeNumber(p?.preco ?? p?.sale_price)
+
+  if (!p || qtdEstoque <= 0) {
     erro('Produto sem estoque. Registre uma compra para repor.')
     return
   }
 
   const atual = itens.value.find((i) => i.id === id)
   if (atual) {
-    if (atual.qtd >= p.estoque) {
-      erro(`Estoque disponível: ${p.estoque} unidades.`)
+    if (atual.qtd >= qtdEstoque) {
+      erro(`Estoque disponível: ${qtdEstoque} unidades.`)
       return
     }
     atual.qtd += 1
   } else {
-    itens.value.push({ id, nome: p.nome, qtd: 1, valor: safeNumber(p.preco), estoque: safeNumber(p.estoque) })
+    itens.value.push({
+      id,
+      nome: p.nome || p.name,
+      qtd: 1,
+      valor: precoVenda,
+      estoque: qtdEstoque,
+    })
   }
   busca.value = ''
 }
@@ -306,60 +342,41 @@ function aumentar(item) {
   item.qtd = Math.min(item.estoque, item.qtd + 1)
 }
 
-function pessoaCriada(pessoa) {
-  const nova = {
-    id: Date.now(),
-    nome: pessoa.nome,
-    documento: pessoa.documento,
-    telefone: pessoa.telefone,
-    email: pessoa.email || '',
-    grupo: pessoa.grupo,
-    genero: pessoa.genero,
-    nascimento: pessoa.nascimento,
-    cep: pessoa.cep,
-    cidade: pessoa.cidade,
-    endereco: pessoa.endereco,
-    observacoes: pessoa.observacoes,
-    status: pessoa.ativo ? 'ativo' : 'inativo',
-    cadastro: new Date().toISOString().slice(0, 10),
+// ---- Callbacks dos Modais de Cadastro ----
+async function pessoaCriada(novaPessoa) {
+  sucesso(
+    'Cliente cadastrado',
+    `${novaPessoa.nome || novaPessoa.name} já está selecionado nesta venda.`,
+  )
+  if (typeof buscarPessoas === 'function') {
+    await buscarPessoas({ type: 'todos', active: 'ativo' })
   }
-  pessoas.unshift(nova)
-  cliente.value = nova.nome
+  clienteId.value = String(novaPessoa.id)
   semCliente.value = false
-  sucesso('Cliente cadastrado', `${nova.nome} já está selecionado nesta venda.`)
 }
 
-function produtoCriado(produto) {
-  const novo = {
-    id: Date.now(),
-    nome: produto.nome,
-    sku: produto.sku,
-    grupo: produto.grupo,
-    subgrupo: produto.subgrupo,
-    marca: produto.marca,
-    status: produto.ativo ? 'ativo' : 'inativo',
-    descricao: produto.descricao,
-    custo: safeNumber(produto.custo),
-    preco: safeNumber(produto.preco),
-    estoque: safeNumber(produto.estoque),
-    minimo: safeNumber(produto.minimo),
+async function produtoCriado(novoProduto) {
+  sucesso('Produto cadastrado', 'Produto adicionado ao carrinho.')
+  if (typeof buscarProdutos === 'function') {
+    await buscarProdutos()
   }
-  produtos.unshift(novo)
-  adicionar(novo.id)
+  if (novoProduto?.id) {
+    adicionar(novoProduto.id)
+  }
 }
 
 function fechar() {
   emit('update:open', false)
 }
 
+// ---- Finalização da Venda ----
 async function finalizar() {
-  if (salvando.value) return
+  if (isCreating.value) return
 
-  // ---- Validações com feedback específico por campo ----
   if (!temClienteValido.value) {
     erro(
       'Cliente não informado',
-      'Selecione um cliente ou marque "Venda sem cliente identificado" para continuar.'
+      'Selecione um cliente ou marque "Venda sem cliente identificado".',
     )
     return
   }
@@ -374,29 +391,35 @@ async function finalizar() {
     return
   }
 
-  if (isNaN(total.value)) {
-    erro('Não foi possível calcular o total da venda.')
-    return
-  }
-
-  salvando.value = true
   try {
-    await new Promise((resolve) => setTimeout(resolve, 900))
+    const payload = {
+      person_id: semCliente.value ? null : clienteId.value,
+      payment_method: pagamento.value,
+      discount_value: valorDescontoAplicado.value,
+      discount_percentage: descontoPercentualPreenchido.value
+        ? descontoPercentual.valorNumerico.value
+        : 0,
+      surcharge_value: valorAcrescimoAplicado.value,
+      surcharge_percentage: acrescimoPercentualPreenchido.value
+        ? acrescimoPercentual.valorNumerico.value
+        : 0,
+      items: itens.value.map((i) => ({
+        product_id: i.id,
+        quantity: i.qtd,
+        unit_price: i.valor,
+      })),
+    }
+
+    const response = await createSale(payload)
 
     sucesso('Venda finalizada.', 'Estoque atualizado com as saídas.')
-    emit('created', {
-      cliente: semCliente.value ? 'Consumidor final' : cliente.value,
-      itens: itens.value.map((i) => ({ ...i })),
-      desconto: valorDescontoAplicado.value,
-      descontoPercentual: descontoPercentualPreenchido.value ? descontoPercentual.valorNumerico.value : null,
-      acrescimo: valorAcrescimoAplicado.value,
-      acrescimoPercentual: acrescimoPercentualPreenchido.value ? acrescimoPercentual.valorNumerico.value : null,
-      pagamento: pagamento.value,
-      total: total.value,
-    })
+    emit('created', response)
     fechar()
-  } finally {
-    salvando.value = false
+  } catch (err) {
+    erro(
+      'Erro ao finalizar venda',
+      err?.response?.data?.message || 'Verifique os dados e tente novamente.',
+    )
   }
 }
 </script>
@@ -424,7 +447,7 @@ async function finalizar() {
                   <span v-if="!semCliente" class="text-destructive">*</span>
                 </label>
                 <div class="flex gap-2">
-                  <Select v-model="cliente" :disabled="semCliente">
+                  <Select v-model="clienteId" :disabled="semCliente">
                     <SelectTrigger
                       id="cliente"
                       class="h-10 w-full cursor-pointer bg-surface disabled:cursor-not-allowed disabled:opacity-50"
@@ -434,7 +457,9 @@ async function finalizar() {
                     <SelectContent>
                       <div class="sticky top-0 z-10 bg-popover p-2 border-b border-border">
                         <div class="relative flex items-center">
-                          <Search class="absolute left-2.5 size-3.5 text-muted-foreground pointer-events-none" />
+                          <Search
+                            class="absolute left-2.5 size-3.5 text-muted-foreground pointer-events-none"
+                          />
                           <input
                             v-model="buscaCliente"
                             type="text"
@@ -455,14 +480,15 @@ async function finalizar() {
                         <SelectItem
                           v-for="p in clientesAtivos"
                           :key="p.id"
-                          :value="p.nome"
+                          :value="String(p.id)"
                           class="cursor-pointer"
                         >
-                          {{ p.nome }}
+                          {{ p.nome || p.name }}
                         </SelectItem>
                       </div>
                     </SelectContent>
                   </Select>
+
                   <Button
                     type="button"
                     variant="outline"
@@ -475,6 +501,7 @@ async function finalizar() {
                     <UserPlus class="size-4" />
                   </Button>
                 </div>
+
                 <div class="mt-2 flex items-center gap-2">
                   <Checkbox
                     id="sem-cliente"
@@ -482,7 +509,10 @@ async function finalizar() {
                     @update:checked="(v) => (semCliente = Boolean(v))"
                     class="cursor-pointer"
                   />
-                  <Label for="sem-cliente" class="cursor-pointer text-sm font-normal text-muted-foreground">
+                  <Label
+                    for="sem-cliente"
+                    class="cursor-pointer text-sm font-normal text-muted-foreground"
+                  >
                     Venda sem cliente identificado
                   </Label>
                 </div>
@@ -491,7 +521,9 @@ async function finalizar() {
 
             <section class="space-y-3 border-t border-border pt-6">
               <div class="flex items-center justify-between">
-                <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                <h3
+                  class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground"
+                >
                   2. Produtos
                 </h3>
                 <Button
@@ -529,7 +561,10 @@ async function finalizar() {
                 </div>
               </div>
 
-              <p v-if="busca.trim() !== '' && disponiveis.length === 0" class="text-sm text-muted-foreground">
+              <p
+                v-if="busca.trim() !== '' && disponiveis.length === 0"
+                class="text-sm text-muted-foreground"
+              >
                 Nenhum produto ativo encontrado com esse termo.
               </p>
 
@@ -545,18 +580,32 @@ async function finalizar() {
                   @mouseenter="indiceAtivo = idx"
                 >
                   <div class="min-w-0">
-                    <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-                    <p class="text-xs text-muted-foreground">{{ p.sku }} · {{ brl(p.preco) }}</p>
+                    <p class="truncate text-sm font-medium">{{ p.nome || p.name }}</p>
+                    <p class="text-xs text-muted-foreground">
+                      {{ p.sku }} · {{ brl(p.preco ?? p.sale_price) }}
+                    </p>
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
-                    <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : nivelEstoque(p) === 'baixo' ? 'warning' : 'success'">
-                      {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un.` }}
+                    <StatusPill
+                      :tom="
+                        nivelEstoque(p) === 'sem'
+                          ? 'danger'
+                          : nivelEstoque(p) === 'baixo'
+                            ? 'warning'
+                            : 'success'
+                      "
+                    >
+                      {{
+                        nivelEstoque(p) === 'sem'
+                          ? 'Sem estoque'
+                          : `${p.estoque ?? p.stock_quantity} un.`
+                      }}
                     </StatusPill>
                     <Button
                       type="button"
                       size="sm"
                       class="cursor-pointer disabled:cursor-not-allowed"
-                      :disabled="p.estoque === 0"
+                      :disabled="safeNumber(p.estoque ?? p.stock_quantity) <= 0"
                       @click="adicionar(p.id)"
                     >
                       <Plus class="size-4" /> Adicionar
@@ -623,7 +672,10 @@ async function finalizar() {
                     </Button>
                     <span class="ml-auto text-sm font-semibold">{{ brl(i.qtd * i.valor) }}</span>
                   </div>
-                  <p v-if="i.qtd >= i.estoque" class="flex items-center gap-1.5 text-xs text-warning">
+                  <p
+                    v-if="i.qtd >= i.estoque"
+                    class="flex items-center gap-1.5 text-xs text-warning"
+                  >
                     <TriangleAlert class="size-3.5" aria-hidden="true" />
                     Limite do estoque disponível ({{ i.estoque }} un.).
                   </p>
@@ -632,7 +684,9 @@ async function finalizar() {
             </section>
           </div>
 
-          <div class="space-y-4 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <div
+            class="space-y-4 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
+          >
             <section class="space-y-4">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 4. Pagamento e Ajustes
@@ -642,9 +696,10 @@ async function finalizar() {
                 <label class="mb-1.5 block text-sm font-medium text-foreground">Desconto</label>
                 <div class="grid grid-cols-2 gap-2">
                   <div class="relative">
-                    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      R$
-                    </span>
+                    <span
+                      class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                      >R$</span
+                    >
                     <input
                       id="desconto"
                       :value="desconto.formatted.value"
@@ -667,9 +722,10 @@ async function finalizar() {
                       @input="descontoPercentual.onInput"
                       @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                     />
-                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      %
-                    </span>
+                    <span
+                      class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                      >%</span
+                    >
                   </div>
                 </div>
               </div>
@@ -678,9 +734,10 @@ async function finalizar() {
                 <label class="mb-1.5 block text-sm font-medium text-foreground">Acréscimo</label>
                 <div class="grid grid-cols-2 gap-2">
                   <div class="relative">
-                    <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      R$
-                    </span>
+                    <span
+                      class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                      >R$</span
+                    >
                     <input
                       id="acrescimo"
                       :value="acrescimo.formatted.value"
@@ -703,9 +760,10 @@ async function finalizar() {
                       @input="acrescimoPercentual.onInput"
                       @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                     />
-                    <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                      %
-                    </span>
+                    <span
+                      class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
+                      >%</span
+                    >
                   </div>
                 </div>
               </div>
@@ -721,8 +779,12 @@ async function finalizar() {
                   <SelectContent>
                     <SelectItem value="Dinheiro" class="cursor-pointer">Dinheiro</SelectItem>
                     <SelectItem value="Pix" class="cursor-pointer">Pix</SelectItem>
-                    <SelectItem value="Cartão de débito" class="cursor-pointer">Cartão de débito</SelectItem>
-                    <SelectItem value="Cartão de crédito" class="cursor-pointer">Cartão de crédito</SelectItem>
+                    <SelectItem value="Cartão de débito" class="cursor-pointer"
+                      >Cartão de débito</SelectItem
+                    >
+                    <SelectItem value="Cartão de crédito" class="cursor-pointer"
+                      >Cartão de crédito</SelectItem
+                    >
                   </SelectContent>
                 </Select>
               </div>
@@ -732,21 +794,33 @@ async function finalizar() {
                   <span>Subtotal</span>
                   <span>{{ brl(subtotal) }}</span>
                 </div>
-                <div v-if="valorDescontoAplicado > 0" class="flex justify-between text-muted-foreground">
+                <div
+                  v-if="valorDescontoAplicado > 0"
+                  class="flex justify-between text-muted-foreground"
+                >
                   <span>
                     Desconto
-                    <template v-if="descontoPercentualPreenchido"> ({{ descontoPercentual.formatted.value }}%)</template>
+                    <template v-if="descontoPercentualPreenchido">
+                      ({{ descontoPercentual.formatted.value }}%)</template
+                    >
                   </span>
                   <span>- {{ brl(valorDescontoAplicado) }}</span>
                 </div>
-                <div v-if="valorAcrescimoAplicado > 0" class="flex justify-between text-muted-foreground">
+                <div
+                  v-if="valorAcrescimoAplicado > 0"
+                  class="flex justify-between text-muted-foreground"
+                >
                   <span>
                     Acréscimo
-                    <template v-if="acrescimoPercentualPreenchido"> ({{ acrescimoPercentual.formatted.value }}%)</template>
+                    <template v-if="acrescimoPercentualPreenchido">
+                      ({{ acrescimoPercentual.formatted.value }}%)</template
+                    >
                   </span>
                   <span>+ {{ brl(valorAcrescimoAplicado) }}</span>
                 </div>
-                <div class="flex items-center justify-between border-t border-border pt-1.5 font-medium">
+                <div
+                  class="flex items-center justify-between border-t border-border pt-1.5 font-medium"
+                >
                   <span>Total a pagar</span>
                   <span class="text-base text-primary">{{ brl(total) }}</span>
                 </div>
@@ -755,20 +829,25 @@ async function finalizar() {
           </div>
         </div>
 
-        <DialogFooter class="flex-col items-stretch gap-2 border-t border-border pt-5 sm:flex-row sm:items-center">
+        <DialogFooter
+          class="flex-col items-stretch gap-2 border-t border-border pt-5 sm:flex-row sm:items-center"
+        >
           <p class="text-xs text-muted-foreground sm:mr-auto">
-            Campos com <span class="text-destructive">*</span> são obrigatórios. Você será avisado ao finalizar se algo faltar.
+            Campos com <span class="text-destructive">*</span> são obrigatórios. Você será avisado
+            ao finalizar se algo faltar.
           </p>
           <div class="flex gap-2 sm:ml-auto">
-            <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">Cancelar</Button>
+            <Button type="button" variant="outline" class="cursor-pointer" @click="fechar"
+              >Cancelar</Button
+            >
             <Button
               type="submit"
-              :disabled="salvando"
+              :disabled="isCreating"
               class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Loader2 v-if="salvando" class="size-4 animate-spin" />
+              <Loader2 v-if="isCreating" class="size-4 animate-spin" />
               <ArrowUpRight v-else class="size-4" />
-              {{ salvando ? 'Finalizando…' : 'Finalizar venda' }}
+              {{ isCreating ? 'Finalizando…' : 'Finalizar venda' }}
             </Button>
           </div>
         </DialogFooter>
@@ -776,7 +855,20 @@ async function finalizar() {
     </DialogContent>
   </Dialog>
 
-  <NewPerson v-model:open="pessoaModalAberto" :pessoa="null" @created="pessoaCriada" />
+  <NewPerson
+    v-model:open="pessoaModalAberto"
+    :pessoa="null"
+    :ao-criar="criarPessoa"
+    :ao-atualizar="atualizarPessoa"
+    :ao-atualizar-parcial="atualizarParcialPessoa"
+    @created="pessoaCriada"
+  />
 
-  <NewProduct v-model:open="produtoModalAberto" :produto="null" @salvo="produtoCriado" />
+  <NewProduct
+    v-model:open="produtoModalAberto"
+    :produto="null"
+    :ao-criar="criarProduto"
+    @created="produtoCriado"
+    @salvo="produtoCriado"
+  />
 </template>

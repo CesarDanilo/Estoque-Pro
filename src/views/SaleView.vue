@@ -1,12 +1,6 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ArrowUpRight,
-  Plus,
-} from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, Plus } from 'lucide-vue-next'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
@@ -18,19 +12,21 @@ import MetricCard from '@/components/ui-kit/MetricCard.vue'
 import NewSale from '@/components/modal/sale/NewSale.vue'
 
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
-import { brl, dataBR, totalDoc, vendas } from '@/lib/mockData'
-
-onMounted(() => {
-  document.title = 'Vendas — Estoque Pro'
-})
+import { useSales } from '@/composables/useSales'
 
 const PORPAGINA = 8
 const BUSCA_MAX = 60
 
-const tom = { concluida: 'success', pendente: 'warning', cancelada: 'danger' }
-const rotulo = { concluida: 'Concluída', pendente: 'Aguardando', cancelada: 'Cancelada' }
+const tom = { completed: 'success', pending: 'warning', cancelled: 'danger' }
+const rotulo = { completed: 'Concluída', pending: 'Aguardando', cancelled: 'Cancelada' }
 
 const buscaBruta = ref('')
 const busca = computed({
@@ -42,7 +38,6 @@ const busca = computed({
 
 const status = ref('todos')
 const pagina = ref(1)
-const carregando = ref(false)
 const modalAberto = ref(false)
 
 const sortCampo = ref(null)
@@ -61,51 +56,33 @@ watch([busca, status, sortCampo, sortDirecao], () => {
   pagina.value = 1
 })
 
-const filtradas = computed(() => {
-  const termo = busca.value.trim().toLowerCase()
+// --- USO DO COMPOSABLE DE VENDAS ---
+const filtros = computed(() => ({
+  page: pagina.value,
+  per_page: PORPAGINA,
+  search: busca.value,
+  status: status.value,
+}))
 
-  return vendas.filter((v) => {
-    if (status.value !== 'todos' && v.status !== status.value) return false
-    if (termo === '') return true
-    return [v.numero, v.cliente].some((t) => t.toLowerCase().includes(termo))
-  })
-})
+const {
+  vendas,
+  totalPaginas,
+  totalRegistros,
+  totalVendido,
+  aguardandoPagamento,
+  ticketMedio,
+  isLoading,
+  refetch,
+} = useSales(filtros)
 
-const ordenadas = computed(() => {
-  if (!sortCampo.value) return filtradas.value
+function formatBrl(val) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0)
+}
 
-  const lista = [...filtradas.value]
-  const mult = sortDirecao.value === 'asc' ? 1 : -1
-
-  lista.sort((a, b) => {
-    if (sortCampo.value === 'data') {
-      return a.data.localeCompare(b.data) * mult
-    }
-    // valor
-    return (totalDoc(a.itens, a.desconto) - totalDoc(b.itens, b.desconto)) * mult
-  })
-
-  return lista
-})
-
-const totalPaginas = computed(() => Math.max(1, Math.ceil(ordenadas.value.length / PORPAGINA)))
-const paginaAtual = computed(() => Math.min(pagina.value, totalPaginas.value))
-const visiveis = computed(() =>
-  ordenadas.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA)
-)
-
-const totalVendido = computed(() =>
-  filtradas.value
-    .filter((v) => v.status !== 'cancelada')
-    .reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
-)
-
-const aguardandoPagamento = computed(() => vendas.filter((v) => v.status === 'pendente').length)
-
-const ticketMedio = computed(() => {
-  const concluidas = filtradas.value.filter((v) => v.status !== 'cancelada').length
-  return concluidas ? totalVendido.value / concluidas : 0
-})
+function formatDate(dateString) {
+  if (!dateString) return '-'
+  return new Date(dateString).toLocaleDateString('pt-BR')
+}
 
 function limpar() {
   busca.value = ''
@@ -118,19 +95,8 @@ function abrirModal() {
   modalAberto.value = true
 }
 
-function vendaCriada(venda) {
-  // mock: insere no topo da lista local; troque por refetch quando integrar a API
-  vendas.unshift({
-    id: Date.now(),
-    numero: `V-${String(Date.now()).slice(-6)}`,
-    cliente: venda.cliente,
-    data: new Date().toISOString().slice(0, 10),
-    itens: venda.itens,
-    desconto: venda.desconto,
-    pagamento: venda.pagamento,
-    status: 'concluida',
-  })
-  pagina.value = 1
+function vendaCriada() {
+  modalAberto.value = false
 }
 </script>
 
@@ -152,42 +118,56 @@ function vendaCriada(venda) {
 
   <div class="space-y-4 p-4 md:space-y-5 md:p-6">
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <MetricCard rotulo="Vendas listadas" :valor="String(filtradas.length)" />
-      <MetricCard rotulo="Total vendido" :valor="brl(totalVendido)" tom="success" apoio="Saídas de estoque">
+      <MetricCard rotulo="Vendas listadas" :valor="String(totalRegistros)" />
+      <MetricCard
+        rotulo="Total vendido"
+        :valor="formatBrl(totalVendido)"
+        tom="success"
+        apoio="Saídas de estoque"
+      >
         <template #icone><ArrowUpRight class="size-4" /></template>
       </MetricCard>
-      <MetricCard rotulo="Aguardando pagamento" :valor="String(aguardandoPagamento)" tom="warning" />
-      <MetricCard rotulo="Ticket médio" :valor="brl(ticketMedio)" />
+      <MetricCard
+        rotulo="Aguardando pagamento"
+        :valor="String(aguardandoPagamento)"
+        tom="warning"
+      />
+      <MetricCard rotulo="Ticket médio" :valor="formatBrl(ticketMedio)" />
     </div>
 
     <Section>
-      <div class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:p-5">
+      <div
+        class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:p-5"
+      >
         <div class="relative w-full md:max-w-sm">
           <SearchField
             v-model="busca"
             label="Buscar venda por número ou cliente"
-            placeholder="Buscar por número ou cliente…"
+            placeholder="Buscar por código…"
             class="w-full"
             :maxlength="BUSCA_MAX"
           />
         </div>
         <Select v-model="status">
-          <SelectTrigger class="h-10 cursor-pointer bg-surface md:ml-auto md:w-44" aria-label="Filtrar por situação">
+          <SelectTrigger
+            class="h-10 cursor-pointer bg-surface md:ml-auto md:w-44"
+            aria-label="Filtrar por situação"
+          >
             <SelectValue placeholder="Situação" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos" class="cursor-pointer">Todas</SelectItem>
-            <SelectItem value="concluida" class="cursor-pointer">Concluídas</SelectItem>
-            <SelectItem value="pendente" class="cursor-pointer">Aguardando</SelectItem>
-            <SelectItem value="cancelada" class="cursor-pointer">Canceladas</SelectItem>
+            <SelectItem value="completed" class="cursor-pointer">Concluídas</SelectItem>
+            <SelectItem value="pending" class="cursor-pointer">Aguardando</SelectItem>
+            <SelectItem value="cancelled" class="cursor-pointer">Canceladas</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      <TableSkeleton v-if="carregando" :colunas="7" />
+      <TableSkeleton v-if="isLoading" :colunas="7" />
 
       <EmptyState
-        v-else-if="visiveis.length === 0"
+        v-else-if="vendas.length === 0"
         titulo="Nenhuma venda encontrada"
         descricao="Não encontramos resultados com esses filtros. Tente outra busca ou registre uma nova venda."
       >
@@ -205,24 +185,28 @@ function vendaCriada(venda) {
       </EmptyState>
 
       <template v-else>
-        <!-- Mobile: cartões -->
         <ul class="divide-y divide-border md:hidden">
-          <li v-for="v in visiveis" :key="v.id" class="space-y-2 px-4 py-3.5">
+          <li v-for="v in vendas" :key="v.id" class="space-y-2 px-4 py-3.5">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
               <div class="min-w-0">
-                <p class="truncate text-sm font-medium">{{ v.numero }}</p>
-                <p class="truncate text-xs text-muted-foreground">{{ v.cliente }}</p>
+                <p class="truncate text-sm font-medium">{{ v.code }}</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  {{ v.customer?.name || 'Cliente não informado' }}
+                </p>
               </div>
-              <span class="text-sm font-semibold">{{ brl(totalDoc(v.itens, v.desconto)) }}</span>
+              <span class="text-sm font-semibold">{{ formatBrl(v.total) }}</span>
             </div>
             <div class="flex items-center justify-between">
-              <StatusPill :tom="tom[v.status]">{{ rotulo[v.status] }}</StatusPill>
-              <span class="text-xs text-muted-foreground">{{ dataBR(v.data) }} · {{ v.pagamento }}</span>
+              <StatusPill :tom="tom[v.status] || 'neutral'">{{
+                rotulo[v.status] || v.status
+              }}</StatusPill>
+              <span class="text-xs text-muted-foreground"
+                >{{ formatDate(v.created_at) }} · {{ v.payment_method }}</span
+              >
             </div>
           </li>
         </ul>
 
-        <!-- Desktop: tabela -->
         <div class="hidden md:block">
           <table class="w-full text-sm">
             <thead class="text-xs text-muted-foreground">
@@ -236,12 +220,17 @@ function vendaCriada(venda) {
                     @click="ordenarPor('data')"
                   >
                     Data
-                    <ArrowUp v-if="sortCampo === 'data' && sortDirecao === 'asc'" class="size-3.5" />
-                    <ArrowDown v-else-if="sortCampo === 'data' && sortDirecao === 'desc'" class="size-3.5" />
+                    <ArrowUp
+                      v-if="sortCampo === 'data' && sortDirecao === 'asc'"
+                      class="size-3.5"
+                    />
+                    <ArrowDown
+                      v-else-if="sortCampo === 'data' && sortDirecao === 'desc'"
+                      class="size-3.5"
+                    />
                     <ArrowUpDown v-else class="size-3.5 opacity-40" />
                   </button>
                 </th>
-                <th class="px-4 py-3 text-right font-medium">Itens</th>
                 <th class="px-4 py-3 font-medium">Pagamento</th>
                 <th class="px-4 py-3 text-right font-medium">
                   <button
@@ -250,8 +239,14 @@ function vendaCriada(venda) {
                     @click="ordenarPor('valor')"
                   >
                     Valor
-                    <ArrowUp v-if="sortCampo === 'valor' && sortDirecao === 'asc'" class="size-3.5" />
-                    <ArrowDown v-else-if="sortCampo === 'valor' && sortDirecao === 'desc'" class="size-3.5" />
+                    <ArrowUp
+                      v-if="sortCampo === 'valor' && sortDirecao === 'asc'"
+                      class="size-3.5"
+                    />
+                    <ArrowDown
+                      v-else-if="sortCampo === 'valor' && sortDirecao === 'desc'"
+                      class="size-3.5"
+                    />
                     <ArrowUpDown v-else class="size-3.5 opacity-40" />
                   </button>
                 </th>
@@ -259,32 +254,37 @@ function vendaCriada(venda) {
               </tr>
             </thead>
             <tbody class="divide-y divide-border">
-              <tr v-for="v in visiveis" :key="v.id" class="transition-colors hover:bg-muted/60">
-                <td class="px-5 py-3 font-medium">{{ v.numero }}</td>
-                <td class="px-4 py-3 text-muted-foreground">{{ v.cliente }}</td>
-                <td class="px-4 py-3 text-muted-foreground">{{ dataBR(v.data) }}</td>
-                <td class="px-4 py-3 text-right">{{ v.itens.length }}</td>
-                <td class="px-4 py-3 text-muted-foreground">{{ v.pagamento }}</td>
-                <td class="px-4 py-3 text-right font-semibold">{{ brl(totalDoc(v.itens, v.desconto)) }}</td>
+              <tr v-for="v in vendas" :key="v.id" class="transition-colors hover:bg-muted/60">
+                <td class="px-5 py-3 font-medium">{{ v.code }}</td>
+                <td class="px-4 py-3 text-muted-foreground">
+                  {{ v.customer?.name || 'Cliente Geral' }}
+                </td>
+                <td class="px-4 py-3 text-muted-foreground">{{ formatDate(v.created_at) }}</td>
+                <td class="px-4 py-3 text-muted-foreground uppercase">{{ v.payment_method }}</td>
+                <td class="px-4 py-3 text-right font-semibold">{{ formatBrl(v.total) }}</td>
                 <td class="px-4 py-3">
-                  <StatusPill :tom="tom[v.status]">{{ rotulo[v.status] }}</StatusPill>
+                  <StatusPill :tom="tom[v.status] || 'neutral'">{{
+                    rotulo[v.status] || v.status
+                  }}</StatusPill>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5">
+        <div
+          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5"
+        >
           <p class="text-xs text-muted-foreground">
-            {{ filtradas.length }} venda(s) · página {{ paginaAtual }} de {{ totalPaginas }}
+            {{ totalRegistros }} venda(s) · página {{ pagina }} de {{ totalPaginas }}
           </p>
           <div class="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               class="cursor-pointer disabled:cursor-not-allowed"
-              :disabled="paginaAtual === 1"
-              @click="pagina = paginaAtual - 1"
+              :disabled="pagina === 1"
+              @click="pagina--"
             >
               Anterior
             </Button>
@@ -292,8 +292,8 @@ function vendaCriada(venda) {
               variant="outline"
               size="sm"
               class="cursor-pointer disabled:cursor-not-allowed"
-              :disabled="paginaAtual === totalPaginas"
-              @click="pagina = paginaAtual + 1"
+              :disabled="pagina >= totalPaginas"
+              @click="pagina++"
             >
               Próxima
             </Button>
