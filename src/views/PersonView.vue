@@ -1,9 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   Download,
   MoreHorizontal,
   Pencil,
@@ -19,6 +16,8 @@ import SearchField from '@/components/ui-kit/SearchField.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import NewPerson from '@/components/modal/person/NewPerson.vue'
 import { useFeedback } from '@/composables/useFeedBack'
+import { usePeople } from '@/composables/usePeople'
+import { useDebounceFn } from '@/composables/useDebounce'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -39,30 +38,30 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { dataBR, pessoas } from '@/lib/mockData'
+import { dataBR } from '@/lib/mockData'
 
 onMounted(() => {
   document.title = 'Pessoas — Estoque Pro'
+  recarregar()
 })
 
-const PORPAGINA = 8
 const BUSCA_MAX = 60
+
+const { pessoas, carregando, meta, buscar, criar, atualizar, remover } = usePeople()
+const { sucesso, erro: erroFeedback } = useFeedback()
 
 const buscaBruta = ref('')
 const busca = computed({
   get: () => buscaBruta.value,
-  set: (valor) => {
-    buscaBruta.value = (valor ?? '').slice(0, BUSCA_MAX)
-  },
+  set: (valor) => { buscaBruta.value = (valor ?? '').slice(0, BUSCA_MAX) },
 })
 
-const grupo = ref('todos')
-const status = ref('todos')
+const type = ref('todos')   // 'todos' | 'individual' | 'company'
+const status = ref('todos') // 'todos' | 'ativo' | 'inativo'
 const pagina = ref(1)
-const carregando = ref(false)
 const excluir = ref(null)
-const modalAberto = ref(false) // controla o modal de cadastro/edição
-const pessoaEditando = ref(null) // pessoa selecionada para edição, ou null = cadastro
+const modalAberto = ref(false)
+const pessoaEditando = ref(null)
 
 function apenasNumeros(texto) {
   return (texto || '').replace(/\D/g, '')
@@ -73,77 +72,23 @@ const TECLAS_PERMITIDAS = new Set([
   'Tab', 'Home', 'End', 'Enter', 'Escape', 'Shift', 'Control', 'Alt', 'Meta',
 ])
 function bloquearExcedente(evento) {
-  if (TECLAS_PERMITIDAS.has(evento.key) || evento.ctrlKey || evento.metaKey || evento.altKey) {
-    return
-  }
-  if (busca.value.length >= BUSCA_MAX) {
-    evento.preventDefault()
-  }
+  if (TECLAS_PERMITIDAS.has(evento.key) || evento.ctrlKey || evento.metaKey || evento.altKey) return
+  if (busca.value.length >= BUSCA_MAX) evento.preventDefault()
 }
 
-const sortCampo = ref(null)
-const sortDirecao = ref('asc')
-
-function ordenarPor(campo) {
-  if (sortCampo.value === campo) {
-    sortDirecao.value = sortDirecao.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortCampo.value = campo
-    sortDirecao.value = 'asc'
-  }
+function recarregar() {
+  buscar({ search: busca.value, type: type.value, active: status.value, page: pagina.value })
 }
+const recarregarDebounced = useDebounceFn(recarregar, 400)
 
-watch([busca, grupo, status, sortCampo, sortDirecao], () => {
-  pagina.value = 1
-})
-
-const filtradas = computed(() => {
-  const termo = busca.value.trim().toLowerCase()
-  const termoNumerico = apenasNumeros(busca.value)
-
-  return pessoas.filter((p) => {
-    if (grupo.value !== 'todos' && p.grupo !== grupo.value) return false
-    if (status.value !== 'todos' && p.status !== status.value) return false
-    if (termo === '') return true
-
-    const combinaTexto = [p.nome, p.email].some((c) => c.toLowerCase().includes(termo))
-    const combinaNumero =
-      termoNumerico !== '' &&
-      [p.documento, p.telefone].some((c) => apenasNumeros(c).includes(termoNumerico))
-
-    return combinaTexto || combinaNumero
-  })
-})
-
-const ordenadas = computed(() => {
-  if (!sortCampo.value) return filtradas.value
-
-  const lista = [...filtradas.value]
-  const mult = sortDirecao.value === 'asc' ? 1 : -1
-
-  lista.sort((a, b) => {
-    if (sortCampo.value === 'nome') {
-      return a.nome.localeCompare(b.nome, 'pt-BR') * mult
-    }
-    return a.cadastro.localeCompare(b.cadastro) * mult
-  })
-
-  return lista
-})
-
-const totalPaginas = computed(() => Math.max(1, Math.ceil(ordenadas.value.length / PORPAGINA)))
-const paginaAtual = computed(() => Math.min(pagina.value, totalPaginas.value))
-const visiveis = computed(() =>
-  ordenadas.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA)
-)
-
-const { sucesso } = useFeedback()
+watch([type, status], () => { pagina.value = 1; recarregar() })
+watch(busca, () => { pagina.value = 1; recarregarDebounced() })
+watch(pagina, recarregar)
 
 function limpar() {
   busca.value = ''
-  grupo.value = 'todos'
+  type.value = 'todos'
   status.value = 'todos'
-  sortCampo.value = null
   pagina.value = 1
 }
 
@@ -161,52 +106,36 @@ function abrirEdicao(pessoa) {
   modalAberto.value = true
 }
 
-function pessoaCriada(pessoa) {
-  // mock: insere no topo da lista local; troque por refetch quando integrar a API
-  pessoas.unshift({
-    id: Date.now(),
-    nome: pessoa.nome,
-    documento: pessoa.documento,
-    telefone: pessoa.telefone,
-    email: pessoa.email || '',
-    grupo: pessoa.grupo,
-    genero: pessoa.genero,
-    nascimento: pessoa.nascimento,
-    cep: pessoa.cep,
-    cidade: pessoa.cidade,
-    endereco: pessoa.endereco,
-    observacoes: pessoa.observacoes,
-    status: pessoa.ativo ? 'ativo' : 'inativo',
-    cadastro: new Date().toISOString().slice(0, 10),
-  })
-  pagina.value = 1
-}
-
-function pessoaAtualizada(pessoa) {
-  // mock: atualiza a pessoa correspondente na lista local; troque por refetch quando integrar a API
-  const index = pessoas.findIndex((p) => p.id === pessoa.id)
-  if (index === -1) return
-
-  pessoas[index] = {
-    ...pessoas[index],
-    nome: pessoa.nome,
-    documento: pessoa.documento,
-    telefone: pessoa.telefone,
-    email: pessoa.email || '',
-    grupo: pessoa.grupo,
-    genero: pessoa.genero,
-    nascimento: pessoa.nascimento,
-    cep: pessoa.cep,
-    cidade: pessoa.cidade,
-    endereco: pessoa.endereco,
-    observacoes: pessoa.observacoes,
-    status: pessoa.ativo ? 'ativo' : 'inativo',
+async function pessoaCriada(pessoa) {
+  try {
+    await criar(pessoa)
+    sucesso('Pessoa cadastrada', 'Cadastro realizado com sucesso.')
+    pagina.value = 1
+    recarregar()
+  } catch (e) {
+    erroFeedback('Erro ao cadastrar', e.response?.data?.message || 'Tente novamente.')
   }
 }
 
-function confirmarExclusao() {
-  sucesso('Pessoa excluída', 'A pessoa foi excluída com sucesso.')
-  excluir.value = null
+async function pessoaAtualizada(pessoa) {
+  try {
+    await atualizar(pessoa.id, pessoa)
+    sucesso('Pessoa atualizada', 'Dados atualizados com sucesso.')
+    recarregar()
+  } catch (e) {
+    erroFeedback('Erro ao atualizar', e.response?.data?.message || 'Tente novamente.')
+  }
+}
+
+async function confirmarExclusao() {
+  try {
+    await remover(excluir.value.id)
+    sucesso('Pessoa excluída', 'A pessoa foi excluída com sucesso.')
+    excluir.value = null
+    recarregar()
+  } catch (e) {
+    erroFeedback('Erro ao excluir', e.response?.data?.message || 'Tente novamente.')
+  }
 }
 </script>
 
@@ -248,15 +177,14 @@ function confirmarExclusao() {
           </span>
         </div>
         <div class="grid grid-cols-2 gap-2 md:ml-auto md:flex md:shrink-0">
-          <Select v-model="grupo">
-            <SelectTrigger class="h-10 cursor-pointer md:w-40" aria-label="Filtrar por grupo">
-              <SelectValue placeholder="Grupo" />
+          <Select v-model="type">
+            <SelectTrigger class="h-10 cursor-pointer md:w-40" aria-label="Filtrar por tipo">
+              <SelectValue placeholder="Tipo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos" class="cursor-pointer">Todos os grupos</SelectItem>
-              <SelectItem value="Cliente" class="cursor-pointer">Clientes</SelectItem>
-              <SelectItem value="Fornecedor" class="cursor-pointer">Fornecedores</SelectItem>
-              <SelectItem value="Colaborador" class="cursor-pointer">Colaboradores</SelectItem>
+              <SelectItem value="todos" class="cursor-pointer">Todos os tipos</SelectItem>
+              <SelectItem value="individual" class="cursor-pointer">Pessoa física</SelectItem>
+              <SelectItem value="company" class="cursor-pointer">Pessoa jurídica</SelectItem>
             </SelectContent>
           </Select>
           <Select v-model="status">
@@ -275,7 +203,7 @@ function confirmarExclusao() {
       <TableSkeleton v-if="carregando" :colunas="6" />
 
       <EmptyState
-        v-else-if="visiveis.length === 0"
+        v-else-if="pessoas.length === 0"
         titulo="Nenhuma pessoa encontrada"
         descricao="Não encontramos resultados com esses filtros. Tente outra busca ou cadastre uma nova pessoa."
       >
@@ -293,9 +221,9 @@ function confirmarExclusao() {
       </EmptyState>
 
       <template v-else>
-        <!-- Mobile: cartões (já seguem a mesma ordenação da tabela) -->
+        <!-- Mobile: cartões -->
         <ul class="divide-y divide-border md:hidden">
-          <li v-for="p in visiveis" :key="p.id" class="space-y-2 px-4 py-3.5">
+          <li v-for="p in pessoas" :key="p.id" class="space-y-2 px-4 py-3.5">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium">{{ p.nome }}</p>
@@ -323,7 +251,7 @@ function confirmarExclusao() {
               </div>
             </div>
             <div class="flex items-center justify-between">
-              <StatusPill tom="info">{{ p.grupo }}</StatusPill>
+              <StatusPill tom="info">{{ p.type === 'individual' ? 'Física' : 'Jurídica' }}</StatusPill>
               <span class="text-xs text-muted-foreground">Desde {{ dataBR(p.cadastro) }}</span>
             </div>
           </li>
@@ -334,46 +262,24 @@ function confirmarExclusao() {
           <table class="w-full text-sm">
             <thead class="text-xs text-muted-foreground">
               <tr class="border-b border-border text-left">
-                <th class="px-5 py-3 font-medium">
-                  <button
-                    type="button"
-                    class="inline-flex cursor-pointer items-center gap-1 transition-colors hover:text-foreground"
-                    @click="ordenarPor('nome')"
-                  >
-                    Nome
-                    <ArrowUp v-if="sortCampo === 'nome' && sortDirecao === 'asc'" class="size-3.5" />
-                    <ArrowDown v-else-if="sortCampo === 'nome' && sortDirecao === 'desc'" class="size-3.5" />
-                    <ArrowUpDown v-else class="size-3.5 opacity-40" />
-                  </button>
-                </th>
+                <th class="px-5 py-3 font-medium">Nome</th>
                 <th class="px-4 py-3 font-medium">Documento</th>
-                <th class="px-4 py-3 font-medium">Grupo</th>
+                <th class="px-4 py-3 font-medium">Tipo</th>
                 <th class="px-4 py-3 font-medium">Telefone</th>
                 <th class="px-4 py-3 font-medium">Situação</th>
-                <th class="px-4 py-3 font-medium">
-                  <button
-                    type="button"
-                    class="inline-flex cursor-pointer items-center gap-1 transition-colors hover:text-foreground"
-                    @click="ordenarPor('cadastro')"
-                  >
-                    Cadastro
-                    <ArrowUp v-if="sortCampo === 'cadastro' && sortDirecao === 'asc'" class="size-3.5" />
-                    <ArrowDown v-else-if="sortCampo === 'cadastro' && sortDirecao === 'desc'" class="size-3.5" />
-                    <ArrowUpDown v-else class="size-3.5 opacity-40" />
-                  </button>
-                </th>
+                <th class="px-4 py-3 font-medium">Cadastro</th>
                 <th class="px-4 py-3 text-right font-medium">Ações</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-border">
-              <tr v-for="p in visiveis" :key="p.id" class="transition-colors hover:bg-muted/60">
+              <tr v-for="p in pessoas" :key="p.id" class="transition-colors hover:bg-muted/60">
                 <td class="max-w-[240px] px-5 py-3">
                   <p class="truncate font-medium">{{ p.nome }}</p>
                   <p class="truncate text-xs text-muted-foreground">{{ p.email }}</p>
                 </td>
                 <td class="px-4 py-3 text-muted-foreground">{{ p.documento }}</td>
                 <td class="px-4 py-3">
-                  <StatusPill tom="info">{{ p.grupo }}</StatusPill>
+                  <StatusPill tom="info">{{ p.type === 'individual' ? 'Física' : 'Jurídica' }}</StatusPill>
                 </td>
                 <td class="px-4 py-3 text-muted-foreground">{{ p.telefone }}</td>
                 <td class="px-4 py-3">
@@ -406,15 +312,15 @@ function confirmarExclusao() {
 
         <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5">
           <p class="text-xs text-muted-foreground">
-            {{ filtradas.length }} pessoa(s) · página {{ paginaAtual }} de {{ totalPaginas }}
+            {{ meta.total }} pessoa(s) · página {{ meta.paginaAtual }} de {{ meta.totalPaginas }}
           </p>
           <div class="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               class="cursor-pointer disabled:cursor-not-allowed"
-              :disabled="paginaAtual === 1"
-              @click="pagina = paginaAtual - 1"
+              :disabled="meta.paginaAtual === 1"
+              @click="pagina = meta.paginaAtual - 1"
             >
               Anterior
             </Button>
@@ -422,8 +328,8 @@ function confirmarExclusao() {
               variant="outline"
               size="sm"
               class="cursor-pointer disabled:cursor-not-allowed"
-              :disabled="paginaAtual === totalPaginas"
-              @click="pagina = paginaAtual + 1"
+              :disabled="meta.paginaAtual === meta.totalPaginas"
+              @click="pagina = meta.paginaAtual + 1"
             >
               Próxima
             </Button>
