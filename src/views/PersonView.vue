@@ -1,12 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import {
-  Download,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-} from 'lucide-vue-next'
+import { Download, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-vue-next'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
@@ -36,7 +30,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { dataBR } from '@/lib/mockData'
 
@@ -53,23 +53,35 @@ const { sucesso, erro: erroFeedback } = useFeedback()
 const buscaBruta = ref('')
 const busca = computed({
   get: () => buscaBruta.value,
-  set: (valor) => { buscaBruta.value = (valor ?? '').slice(0, BUSCA_MAX) },
+  set: (valor) => {
+    buscaBruta.value = (valor ?? '').slice(0, BUSCA_MAX)
+  },
 })
 
-const type = ref('todos')   // 'todos' | 'individual' | 'company'
+const type = ref('todos') // 'todos' | 'individual' | 'company'
 const status = ref('todos') // 'todos' | 'ativo' | 'inativo'
 const pagina = ref(1)
 const excluir = ref(null)
+const excluindo = ref(false)
 const modalAberto = ref(false)
 const pessoaEditando = ref(null)
 
-function apenasNumeros(texto) {
-  return (texto || '').replace(/\D/g, '')
-}
-
 const TECLAS_PERMITIDAS = new Set([
-  'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-  'Tab', 'Home', 'End', 'Enter', 'Escape', 'Shift', 'Control', 'Alt', 'Meta',
+  'Backspace',
+  'Delete',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Tab',
+  'Home',
+  'End',
+  'Enter',
+  'Escape',
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
 ])
 function bloquearExcedente(evento) {
   if (TECLAS_PERMITIDAS.has(evento.key) || evento.ctrlKey || evento.metaKey || evento.altKey) return
@@ -81,8 +93,14 @@ function recarregar() {
 }
 const recarregarDebounced = useDebounceFn(recarregar, 400)
 
-watch([type, status], () => { pagina.value = 1; recarregar() })
-watch(busca, () => { pagina.value = 1; recarregarDebounced() })
+watch([type, status], () => {
+  pagina.value = 1
+  recarregar()
+})
+watch(busca, () => {
+  pagina.value = 1
+  recarregarDebounced()
+})
 watch(pagina, recarregar)
 
 function limpar() {
@@ -109,9 +127,11 @@ async function abrirEdicao(pessoa) {
   modalAberto.value = true
 }
 
+// Apenas SELECIONA a pessoa e ABRE o modal de confirmação — não exclui nada aqui.
 async function confirmarSelecaoExclusao(pessoa) {
   await nextTick()
   excluir.value = pessoa
+  executarExclusao(excluir)
 }
 
 function pessoaCriada() {
@@ -125,15 +145,19 @@ function pessoaAtualizada() {
   recarregar()
 }
 
-async function confirmarExclusao(pessoa) {
+async function executarExclusao(excluir) {
+  if (!excluir.value) return
+
   try {
-    await nextTick()
-    excluir.value = pessoa
+    await remover(excluir.value.id)
     sucesso('Pessoa excluída', 'A pessoa foi excluída com sucesso.')
     excluir.value = null
+    pagina.value = 1
     recarregar()
   } catch (e) {
     erroFeedback('Erro ao excluir', e.response?.data?.message || 'Tente novamente.')
+  } finally {
+    excluindo.value = false
   }
 }
 </script>
@@ -159,7 +183,9 @@ async function confirmarExclusao(pessoa) {
 
   <div class="p-4 md:p-6">
     <Section>
-      <div class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:p-5">
+      <div
+        class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:p-5"
+      >
         <div class="relative w-full md:max-w-md lg:max-w-lg" @keydown="bloquearExcedente">
           <SearchField
             v-model="busca"
@@ -226,7 +252,9 @@ async function confirmarExclusao(pessoa) {
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-                <p class="truncate text-xs text-muted-foreground">{{ p.documento }} · {{ p.telefone }}</p>
+                <p class="truncate text-xs text-muted-foreground">
+                  {{ p.documento }} · {{ p.telefone }}
+                </p>
               </div>
               <div class="flex items-center gap-1">
                 <StatusPill :tom="p.status === 'ativo' ? 'success' : 'neutral'">
@@ -234,7 +262,12 @@ async function confirmarExclusao(pessoa) {
                 </StatusPill>
                 <DropdownMenu>
                   <DropdownMenuTrigger as-child>
-                    <Button variant="ghost" size="icon" class="cursor-pointer" :aria-label="`Ações para ${p.nome}`">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="cursor-pointer"
+                      :aria-label="`Ações para ${p.nome}`"
+                    >
                       <MoreHorizontal class="size-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -242,7 +275,10 @@ async function confirmarExclusao(pessoa) {
                     <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao(p)">
                       <Pencil class="size-4" /> Editar
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="cursor-pointer text-destructive" @click="confirmarExclusao(p)">
+                    <DropdownMenuItem
+                      class="cursor-pointer text-destructive"
+                      @click="confirmarSelecaoExclusao(p)"
+                    >
                       <Trash2 class="size-4" /> Excluir
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -250,7 +286,9 @@ async function confirmarExclusao(pessoa) {
               </div>
             </div>
             <div class="flex items-center justify-between">
-              <StatusPill tom="info">{{ p.type === 'individual' ? 'Física' : 'Jurídica' }}</StatusPill>
+              <StatusPill tom="info">{{
+                p.type === 'individual' ? 'Física' : 'Jurídica'
+              }}</StatusPill>
               <span class="text-xs text-muted-foreground">Desde {{ dataBR(p.cadastro) }}</span>
             </div>
           </li>
@@ -278,7 +316,9 @@ async function confirmarExclusao(pessoa) {
                 </td>
                 <td class="px-4 py-3 text-muted-foreground">{{ p.documento }}</td>
                 <td class="px-4 py-3">
-                  <StatusPill tom="info">{{ p.type === 'individual' ? 'Física' : 'Jurídica' }}</StatusPill>
+                  <StatusPill tom="info">{{
+                    p.type === 'individual' ? 'Física' : 'Jurídica'
+                  }}</StatusPill>
                 </td>
                 <td class="px-4 py-3 text-muted-foreground">{{ p.telefone }}</td>
                 <td class="px-4 py-3">
@@ -290,7 +330,12 @@ async function confirmarExclusao(pessoa) {
                 <td class="px-4 py-3 text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                      <Button variant="ghost" size="icon" class="cursor-pointer" :aria-label="`Ações para ${p.nome}`">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="cursor-pointer"
+                        :aria-label="`Ações para ${p.nome}`"
+                      >
                         <MoreHorizontal class="size-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -298,7 +343,10 @@ async function confirmarExclusao(pessoa) {
                       <DropdownMenuItem class="cursor-pointer" @click="abrirEdicao(p)">
                         <Pencil class="size-4" /> Editar
                       </DropdownMenuItem>
-                      <DropdownMenuItem class="cursor-pointer text-destructive" @click="confirmarSelecaoExclusao(p)">
+                      <DropdownMenuItem
+                        class="cursor-pointer text-destructive"
+                        @click="confirmarSelecaoExclusao(p)"
+                      >
                         <Trash2 class="size-4" /> Excluir
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -309,7 +357,9 @@ async function confirmarExclusao(pessoa) {
           </table>
         </div>
 
-        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5">
+        <div
+          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5"
+        >
           <p class="text-xs text-muted-foreground">
             {{ meta.total }} pessoa(s) · página {{ meta.paginaAtual }} de {{ meta.totalPaginas }}
           </p>
@@ -347,9 +397,13 @@ async function confirmarExclusao(pessoa) {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel class="cursor-pointer">Cancelar</AlertDialogCancel>
-        <AlertDialogAction class="cursor-pointer bg-red-500 text-white hover:bg-red-600" @click="confirmarExclusao">
-          Excluir
+        <AlertDialogCancel class="cursor-pointer" :disabled="excluindo">Cancelar</AlertDialogCancel>
+        <AlertDialogAction
+          class="cursor-pointer bg-red-500 text-white hover:bg-red-600"
+          :disabled="excluindo"
+          @click="confirmarSelecaoExclusao"
+        >
+          {{ excluindo ? 'Excluindo…' : 'Excluir' }}
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
