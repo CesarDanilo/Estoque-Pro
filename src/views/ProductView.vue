@@ -194,7 +194,14 @@ const produtosFiltrados = computed(() => {
 const totalPaginas = computed(() =>
   Math.max(1, Math.ceil(produtosFiltrados.value.length / PORPAGINA)),
 )
-const paginaAtual = computed(() => Math.min(pagina.value, totalPaginas.value))
+
+const paginaAtual = computed(() => {
+  if (pagina.value > totalPaginas.value) {
+    return totalPaginas.value
+  }
+  return Math.max(1, pagina.value)
+})
+
 const visiveis = computed(() =>
   produtosFiltrados.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA),
 )
@@ -489,7 +496,7 @@ function aoSalvarProduto() {
                 size="sm"
                 class="cursor-pointer disabled:cursor-not-allowed"
                 :disabled="paginaAtual === totalPaginas"
-                @click="pagina = paginaAtual + totalPaginas > 0 ? 0 : 0"
+                @click="pagina = paginaAtual + 1"
               >
                 Próxima
               </Button>
