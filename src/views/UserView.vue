@@ -27,7 +27,6 @@ import { useFeedback } from '@/composables/useFeedBack'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -41,7 +40,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import { dataBR } from '@/lib/mockData'
 
@@ -100,10 +105,24 @@ const excluir = ref(null)
 
 const modalAberto = ref(false)
 const usuarioEditando = ref(null)
+const excluindo = ref(false)
 
 const TECLAS_PERMITIDAS = new Set([
-  'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-  'Tab', 'Home', 'End', 'Enter', 'Escape', 'Shift', 'Control', 'Alt', 'Meta',
+  'Backspace',
+  'Delete',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Tab',
+  'Home',
+  'End',
+  'Enter',
+  'Escape',
+  'Shift',
+  'Control',
+  'Alt',
+  'Meta',
 ])
 
 function bloquearExcedente(evento) {
@@ -165,7 +184,7 @@ const ordenados = computed(() => {
 const totalPaginas = computed(() => Math.max(1, Math.ceil(ordenados.value.length / PORPAGINA)))
 const paginaAtual = computed(() => Math.min(pagina.value, totalPaginas.value))
 const visiveis = computed(() =>
-  ordenados.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA)
+  ordenados.value.slice((paginaAtual.value - 1) * PORPAGINA, paginaAtual.value * PORPAGINA),
 )
 
 const { sucesso } = useFeedback()
@@ -216,17 +235,20 @@ function usuarioAtualizado(usuario) {
 
 function alternarStatus(usuario) {
   usuario.status = usuario.status === 'ativo' ? 'inativo' : 'ativo'
-  sucesso(
-    `Status atualizado`,
-    `Usuário ${usuario.nome} agora está ${usuario.status}.`
-  )
+  sucesso(`Status atualizado`, `Usuário ${usuario.nome} agora está ${usuario.status}.`)
 }
 
 function confirmarExclusao() {
-  if (!excluir.value) return
-  usuarios.value = usuarios.value.filter((u) => u.id !== excluir.value.id)
-  sucesso('Usuário excluído', 'O usuário foi removido do sistema.')
-  excluir.value = null
+  if (!excluir.value || excluindo.value) return
+
+  excluindo.value = true
+  try {
+    usuarios.value = usuarios.value.filter((u) => u.id !== excluir.value.id)
+    sucesso('Usuário excluído', 'O usuário foi removido do sistema.')
+    excluir.value = null
+  } finally {
+    excluindo.value = false
+  }
 }
 </script>
 
@@ -251,7 +273,9 @@ function confirmarExclusao() {
 
   <div class="p-4 md:p-6">
     <Section>
-      <div class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:p-5">
+      <div
+        class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:p-5"
+      >
         <div class="relative w-full md:max-w-md lg:max-w-lg" @keydown="bloquearExcedente">
           <SearchField
             v-model="busca"
@@ -328,7 +352,12 @@ function confirmarExclusao() {
                 </StatusPill>
                 <DropdownMenu>
                   <DropdownMenuTrigger as-child>
-                    <Button variant="ghost" size="icon" class="cursor-pointer" :aria-label="`Ações para ${u.nome}`">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="cursor-pointer"
+                      :aria-label="`Ações para ${u.nome}`"
+                    >
                       <MoreHorizontal class="size-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -337,7 +366,10 @@ function confirmarExclusao() {
                       <Pencil class="size-4 mr-2" /> Editar
                     </DropdownMenuItem>
                     <DropdownMenuItem class="cursor-pointer" @click="alternarStatus(u)">
-                      <component :is="u.status === 'ativo' ? UserX : UserCheck" class="size-4 mr-2" />
+                      <component
+                        :is="u.status === 'ativo' ? UserX : UserCheck"
+                        class="size-4 mr-2"
+                      />
                       {{ u.status === 'ativo' ? 'Desativar' : 'Ativar' }}
                     </DropdownMenuItem>
                     <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = u">
@@ -365,8 +397,14 @@ function confirmarExclusao() {
                     @click="ordenarPor('nome')"
                   >
                     Nome
-                    <ArrowUp v-if="sortCampo === 'nome' && sortDirecao === 'asc'" class="size-3.5" />
-                    <ArrowDown v-else-if="sortCampo === 'nome' && sortDirecao === 'desc'" class="size-3.5" />
+                    <ArrowUp
+                      v-if="sortCampo === 'nome' && sortDirecao === 'asc'"
+                      class="size-3.5"
+                    />
+                    <ArrowDown
+                      v-else-if="sortCampo === 'nome' && sortDirecao === 'desc'"
+                      class="size-3.5"
+                    />
                     <ArrowUpDown v-else class="size-3.5 opacity-40" />
                   </button>
                 </th>
@@ -379,8 +417,14 @@ function confirmarExclusao() {
                     @click="ordenarPor('cadastro')"
                   >
                     Cadastro
-                    <ArrowUp v-if="sortCampo === 'cadastro' && sortDirecao === 'asc'" class="size-3.5" />
-                    <ArrowDown v-else-if="sortCampo === 'cadastro' && sortDirecao === 'desc'" class="size-3.5" />
+                    <ArrowUp
+                      v-if="sortCampo === 'cadastro' && sortDirecao === 'asc'"
+                      class="size-3.5"
+                    />
+                    <ArrowDown
+                      v-else-if="sortCampo === 'cadastro' && sortDirecao === 'desc'"
+                      class="size-3.5"
+                    />
                     <ArrowUpDown v-else class="size-3.5 opacity-40" />
                   </button>
                 </th>
@@ -396,9 +440,7 @@ function confirmarExclusao() {
                   </p>
                 </td>
                 <td class="px-4 py-3">
-                  <StatusPill tom="info">
-                    <Shield class="mr-1 size-3" /> {{ u.cargo }}
-                  </StatusPill>
+                  <StatusPill tom="info"> <Shield class="mr-1 size-3" /> {{ u.cargo }} </StatusPill>
                 </td>
                 <td class="px-4 py-3">
                   <StatusPill :tom="u.status === 'ativo' ? 'success' : 'neutral'">
@@ -409,7 +451,12 @@ function confirmarExclusao() {
                 <td class="px-4 py-3 text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                      <Button variant="ghost" size="icon" class="cursor-pointer" :aria-label="`Ações para ${u.nome}`">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="cursor-pointer"
+                        :aria-label="`Ações para ${u.nome}`"
+                      >
                         <MoreHorizontal class="size-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -418,10 +465,16 @@ function confirmarExclusao() {
                         <Pencil class="size-4 mr-2" /> Editar
                       </DropdownMenuItem>
                       <DropdownMenuItem class="cursor-pointer" @click="alternarStatus(u)">
-                        <component :is="u.status === 'ativo' ? UserX : UserCheck" class="size-4 mr-2" />
+                        <component
+                          :is="u.status === 'ativo' ? UserX : UserCheck"
+                          class="size-4 mr-2"
+                        />
                         {{ u.status === 'ativo' ? 'Desativar' : 'Ativar' }}
                       </DropdownMenuItem>
-                      <DropdownMenuItem class="cursor-pointer text-destructive" @click="excluir = u">
+                      <DropdownMenuItem
+                        class="cursor-pointer text-destructive"
+                        @click="excluir = u"
+                      >
                         <Trash2 class="size-4 mr-2" /> Excluir
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -432,7 +485,9 @@ function confirmarExclusao() {
           </table>
         </div>
 
-        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5">
+        <div
+          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5"
+        >
           <p class="text-xs text-muted-foreground">
             {{ filtrados.length }} usuário(s) · página {{ paginaAtual }} de {{ totalPaginas }}
           </p>
@@ -466,14 +521,20 @@ function confirmarExclusao() {
       <AlertDialogHeader>
         <AlertDialogTitle>Excluir {{ excluir?.nome }}?</AlertDialogTitle>
         <AlertDialogDescription>
-          Esta ação não pode ser desfeita. O histórico de atividades deste usuário continuará registrado no sistema.
+          Esta ação não pode ser desfeita. O histórico de atividades deste usuário continuará
+          registrado no sistema.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel class="cursor-pointer">Cancelar</AlertDialogCancel>
-        <AlertDialogAction class="cursor-pointer bg-red-500 text-white hover:bg-red-600" @click="confirmarExclusao">
-          Excluir
-        </AlertDialogAction>
+        <AlertDialogCancel class="cursor-pointer" :disabled="excluindo">Cancelar</AlertDialogCancel>
+        <Button
+          type="button"
+          class="cursor-pointer bg-red-500 text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="excluindo"
+          @click="confirmarExclusao"
+        >
+          {{ excluindo ? 'Excluindo…' : 'Excluir' }}
+        </Button>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
