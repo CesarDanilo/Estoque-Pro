@@ -35,7 +35,6 @@ import SupplierModal from '@/components/modal/supplier/NewSupplier.vue'
 const props = defineProps({
   open: { type: Boolean, default: false },
   produto: { type: Object, default: null },
-  // Callbacks opcionais mantidos para compatibilidade
   aoCriar: { type: Function, default: null },
   aoAtualizar: { type: Function, default: null },
 })
@@ -74,6 +73,13 @@ const listaGrupos = computed(() => {
   const dados = groupsQuery?.data?.value
   if (Array.isArray(dados)) return dados
   return dados?.data || []
+})
+
+// Grupos ordenados em ordem alfabética (A-Z)
+const gruposOrdenados = computed(() => {
+  return [...listaGrupos.value].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }),
+  )
 })
 
 const carregandoGrupos = computed(() => groupsQuery?.isLoading?.value ?? false)
@@ -168,12 +174,50 @@ const margemClasse = computed(() => {
 })
 
 // ---- TanStack Query (Fornecedores) ----
-const { data: listaFornecedores, isLoading: carregandoFornecedores } = useQuery({
+const {
+  data: fornecedoresData,
+  isLoading: carregandoFornecedores,
+  refetch: refetchFornecedores,
+} = useQuery({
   queryKey: ['suppliers'],
   queryFn: () => supplierService.getAll(),
   enabled: computed(() => props.open),
   staleTime: 1000 * 60 * 10,
 })
+
+const listaFornecedores = computed(() => {
+  if (Array.isArray(fornecedoresData.value)) return fornecedoresData.value
+  return fornecedoresData.value?.data || []
+})
+
+// Fornecedores ordenados em ordem alfabética (A-Z)
+const fornecedoresOrdenados = computed(() => {
+  return [...listaFornecedores.value].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }),
+  )
+})
+
+// ---- Callbacks para seleção automática de Grupo e Fornecedor ----
+async function grupoCriado(grupo) {
+  await queryClient.invalidateQueries({ queryKey: ['groups'] })
+  if (groupsQuery?.refetch) await groupsQuery.refetch()
+
+  const novoId = grupo?.id ?? grupo?.data?.id
+  if (novoId) {
+    form.group_id = String(novoId)
+    if (erros.group_id) delete erros.group_id
+  }
+}
+
+async function fornecedorCriado(fornecedor) {
+  await queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  await refetchFornecedores()
+
+  const novoId = fornecedor?.id ?? fornecedor?.data?.id
+  if (novoId) {
+    form.supplier_id = String(novoId)
+  }
+}
 
 // ---- TanStack Mutation (Criação e Edição do Produto) ----
 const saveMutation = useMutation({
@@ -186,7 +230,6 @@ const saveMutation = useMutation({
     return await productService.create(payload)
   },
   onSuccess: (res) => {
-    // Invalida cache global do TanStack Query
     queryClient.invalidateQueries({ queryKey: ['products'] })
 
     const produtoSalvo = res?.data || res
@@ -196,7 +239,6 @@ const saveMutation = useMutation({
       editando.value ? 'As alterações foram salvas com sucesso.' : 'Produto adicionado ao estoque.',
     )
 
-    // Emite eventos com os dados do produto salvo para componentes pai (ex: Vendas)
     if (editando.value) {
       emit('updated', produtoSalvo)
     } else {
@@ -408,10 +450,10 @@ function salvar() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem
-                        v-for="g in listaGrupos"
+                        v-for="g in gruposOrdenados"
                         :key="g.id"
                         :value="String(g.id)"
-                        class="cursor-pointer"
+                        class="cursor-pointer truncate"
                       >
                         {{ g.name }}
                       </SelectItem>
@@ -432,54 +474,52 @@ function salvar() {
                   {{ Array.isArray(erros.group_id) ? erros.group_id[0] : erros.group_id }}
                 </p>
               </div>
-              <div>
-                <div>
-                  <label
-                    for="produto-fornecedor"
-                    class="mb-1.5 block text-sm font-medium text-foreground"
-                  >
-                    Fornecedor (Opcional)
-                  </label>
-                  <div class="flex gap-2 min-w-0 w-full">
-                    <Select v-model="form.supplier_id">
-                      <SelectTrigger
-                        id="produto-fornecedor"
-                        class="!h-10 w-full max-w-[280px] min-w-0 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
-                      >
-                        <SelectValue
-                          class="truncate block min-w-0"
-                          :placeholder="
-                            carregandoFornecedores ? 'Carregando…' : 'Sem fornecedor (Avulso)'
-                          "
-                        />
-                      </SelectTrigger>
-                      <SelectContent class="max-w-[320px]">
-                        <SelectItem value="none" class="cursor-pointer truncate">
-                          Sem fornecedor (Avulso)
-                        </SelectItem>
-                        <SelectItem
-                          v-for="s in listaFornecedores"
-                          :key="s.id"
-                          :value="String(s.id)"
-                          class="cursor-pointer truncate"
-                        >
-                          {{ s.name }}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      class="h-10 w-10 shrink-0 cursor-pointer"
-                      title="Criar novo fornecedor"
-                      @click="modalFornecedorAberto = true"
-                    >
-                      <Plus class="size-4" />
-                    </Button>
-                  </div>
-                </div>
 
+              <div>
+                <label
+                  for="produto-fornecedor"
+                  class="mb-1.5 block text-sm font-medium text-foreground"
+                >
+                  Fornecedor (Opcional)
+                </label>
+                <div class="flex gap-2 min-w-0 w-full">
+                  <Select v-model="form.supplier_id">
+                    <SelectTrigger
+                      id="produto-fornecedor"
+                      class="!h-10 w-full max-w-[280px] min-w-0 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
+                    >
+                      <SelectValue
+                        class="truncate block min-w-0"
+                        :placeholder="
+                          carregandoFornecedores ? 'Carregando…' : 'Sem fornecedor (Avulso)'
+                        "
+                      />
+                    </SelectTrigger>
+                    <SelectContent class="max-w-[320px]">
+                      <SelectItem value="none" class="cursor-pointer truncate">
+                        Sem fornecedor (Avulso)
+                      </SelectItem>
+                      <SelectItem
+                        v-for="s in fornecedoresOrdenados"
+                        :key="s.id"
+                        :value="String(s.id)"
+                        class="cursor-pointer truncate"
+                      >
+                        {{ s.name }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    class="h-10 w-10 shrink-0 cursor-pointer"
+                    title="Criar novo fornecedor"
+                    @click="modalFornecedorAberto = true"
+                  >
+                    <Plus class="size-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -662,6 +702,10 @@ function salvar() {
     </DialogContent>
   </Dialog>
 
-  <GroupModal v-model:open="modalGrupoAberto" />
-  <SupplierModal v-model:open="modalFornecedorAberto" />
+  <GroupModal v-model:open="modalGrupoAberto" @created="grupoCriado" @salvo="grupoCriado" />
+  <SupplierModal
+    v-model:open="modalFornecedorAberto"
+    @created="fornecedorCriado"
+    @salvo="fornecedorCriado"
+  />
 </template>
