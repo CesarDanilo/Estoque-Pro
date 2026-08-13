@@ -301,7 +301,10 @@ const chartOptionsGrupo = {
         </Button>
       </template>
 
-      <ul v-if="atencao.length > 0" class="max-h-72 divide-y divide-border overflow-y-auto">
+      <ul
+        v-if="atencao.length > 0"
+        class="max-h-72 divide-y divide-border overflow-y-auto custom-scrollbar"
+      >
         <li v-for="p in atencao" :key="p.id">
           <button
             type="button"
@@ -357,7 +360,10 @@ const chartOptionsGrupo = {
       </Section>
 
       <Section titulo="Vendas por grupo" descricao="Participação de cada categoria.">
-        <div v-if="listaGrupos.length > 0" class="max-h-72 overflow-y-auto p-3 md:p-4">
+        <div
+          v-if="listaGrupos.length > 0"
+          class="max-h-72 overflow-y-auto p-3 md:p-4 custom-scrollbar"
+        >
           <div :style="{ height: alturaGraficoGrupo + 'px' }">
             <Bar :data="chartDataGrupo" :options="chartOptionsGrupo" />
           </div>
@@ -381,7 +387,10 @@ const chartOptionsGrupo = {
           </Button>
         </template>
 
-        <ul v-if="maisVendidos.length > 0" class="max-h-72 divide-y divide-border overflow-y-auto">
+        <ul
+          v-if="maisVendidos.length > 0"
+          class="max-h-72 divide-y divide-border overflow-y-auto custom-scrollbar"
+        >
           <li v-for="(item, i) in maisVendidos" :key="item.product_id || i">
             <button
               type="button"
@@ -420,7 +429,10 @@ const chartOptionsGrupo = {
       </Section>
 
       <Section titulo="Atividades recentes" descricao="Últimas movimentações de estoque.">
-        <ul v-if="atividades.length > 0" class="max-h-72 divide-y divide-border overflow-y-auto">
+        <ul
+          v-if="atividades.length > 0"
+          class="max-h-72 divide-y divide-border overflow-y-auto custom-scrollbar"
+        >
           <li v-for="a in atividades" :key="`${a.tipo}-${a.id}`">
             <button
               type="button"
@@ -485,3 +497,20 @@ const chartOptionsGrupo = {
 
   <NewSale v-model:open="modalVendaAberto" :sale="vendaEmEdicao" @salvo="onVendaSalva" />
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+</style>
