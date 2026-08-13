@@ -818,15 +818,8 @@ async function executarExclusao() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem class="cursor-pointer" @click="visualizarOuEditarVenda(v)">
-                      <Eye class="mr-2 size-4" /> Ver detalhes
-                    </DropdownMenuItem>
-                    <DropdownMenuItem class="cursor-pointer" @click="visualizarOuEditarVenda(v)">
                       <Pencil class="mr-2 size-4" /> Editar venda
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="cursor-pointer" @click="imprimirComprovante(v)">
-                      <Printer class="mr-2 size-4" /> Ver comprovante
-                    </DropdownMenuItem>
-
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel class="text-[11px] font-semibold text-muted-foreground">
                       Alterar situação
@@ -985,15 +978,8 @@ async function executarExclusao() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem class="cursor-pointer" @click="visualizarOuEditarVenda(v)">
-                        <Eye class="mr-2 size-4" /> Ver detalhes
-                      </DropdownMenuItem>
-                      <DropdownMenuItem class="cursor-pointer" @click="visualizarOuEditarVenda(v)">
                         <Pencil class="mr-2 size-4" /> Editar venda
                       </DropdownMenuItem>
-                      <DropdownMenuItem class="cursor-pointer" @click="imprimirComprovante(v)">
-                        <Printer class="mr-2 size-4" /> Ver comprovante
-                      </DropdownMenuItem>
-
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel class="text-[11px] font-semibold text-muted-foreground">
                         Alterar situação
@@ -1023,14 +1009,6 @@ async function executarExclusao() {
                         @click="alterarStatusVenda(v, 'cancelled')"
                       >
                         <XCircle class="mr-2 size-4" /> Cancelar venda
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        v-if="v.status === 'completed'"
-                        class="cursor-pointer text-red-600 focus:text-red-600"
-                        @click="alterarStatusVenda(v, 'refunded')"
-                      >
-                        <RotateCcw class="mr-2 size-4" /> Estornar venda
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
