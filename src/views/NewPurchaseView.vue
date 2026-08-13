@@ -1,7 +1,7 @@
 <script setup>
 import { RouterLink, useRouter } from 'vue-router'
-import { computed, onMounted, ref, watch } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, onMounted, ref } from 'vue'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { ArrowDownRight, Check, Loader2, Minus, Plus, Search, Trash2 } from 'lucide-vue-next'
 
 import PageHeader from '@/components/page-shell/PageHeader.vue'
@@ -9,7 +9,10 @@ import Section from '@/components/page-shell/Section.vue'
 import EmptyState from '@/components/page-shell/EmptyState.vue'
 import FieldLabel from '@/components/ui-kit/FieldLabel.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
+
+// Modais On-the-Fly
 import NewSupplier from '@/components/modal/supplier/NewSupplier.vue'
+import ProductModal from '@/components/modal/product/NewProduct.vue'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +35,7 @@ onMounted(() => {
   document.title = 'Nova compra — Estoque Pro'
 })
 
+const queryClient = useQueryClient()
 const router = useRouter()
 const { sucesso, erro } = useFeedback()
 const { createPurchase, isCreating } = usePurchases()
@@ -41,16 +45,13 @@ const fornecedorId = ref('')
 const buscaFornecedor = ref('')
 const buscaProduto = ref('')
 const grupoSelecionado = ref('todos')
-// Cada item: { id, nome, qtd, custoCentavos } — custoCentavos é uma STRING
-// simples de dígitos (ex: "1050" = R$ 10,50). Nada de ref/computed aninhado
-// aqui dentro: por estar guardado num array reativo (itens.value.push),
-// qualquer ref colocado como propriedade de um objeto desse array é
-// automaticamente "desembrulhado" pelo Vue — ou seja, i.custo.formatted.value
-// deixa de existir (formatted já vem como string pura) e o binding quebra
-// silenciosamente. Guardando só o valor cru (string) evitamos esse problema.
+
 const itens = ref([])
 const observacoes = ref('')
+
+// Controle dos Modais
 const modalFornecedorAberto = ref(false)
+const modalProdutoAberto = ref(false)
 
 const passos = ['Fornecedor', 'Produtos e valores', 'Revisar e finalizar']
 
@@ -60,7 +61,7 @@ function brl(valor) {
   )
 }
 
-// ---- Helpers de formatação do custo (sem refs aninhados) ----
+// ---- Helpers de formatação do custo ----
 function custoValor(item) {
   return item.custoCentavos ? Number(item.custoCentavos) / 100 : 0
 }
@@ -88,32 +89,44 @@ const {
   staleTime: 1000 * 60 * 5,
 })
 
-const listaFornecedores = computed(() => fornecedoresData.value || [])
+const listaFornecedores = computed(() => {
+  const dados = fornecedoresData.value
+  if (Array.isArray(dados)) return dados
+  return dados?.data || []
+})
 
 const fornecedoresAtivos = computed(() => {
   return [...listaFornecedores.value]
-    .filter((f) => f.active)
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    .filter((f) => f.active ?? true)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'))
 })
 
 const fornecedoresFiltrados = computed(() => {
   if (!buscaFornecedor.value.trim()) return fornecedoresAtivos.value
   const termo = buscaFornecedor.value.toLowerCase()
-  return fornecedoresAtivos.value.filter((f) => f.name.toLowerCase().includes(termo))
+  return fornecedoresAtivos.value.filter((f) => (f.name || '').toLowerCase().includes(termo))
 })
 
 const fornecedorSelecionado = computed(() =>
   listaFornecedores.value.find((f) => String(f.id) === String(fornecedorId.value)),
 )
 
-watch(modalFornecedorAberto, (aberto, eraAberto) => {
-  if (!aberto && eraAberto) {
-    refetchFornecedores()
-  }
-})
-
 function abrirModalFornecedor() {
   modalFornecedorAberto.value = true
+}
+
+// Seleciona automaticamente o fornecedor recém-cadastrado na Aba 1
+async function fornecedorCriado(fornecedor) {
+  await queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  await refetchFornecedores()
+
+  const novoId = fornecedor?.id ?? fornecedor?.data?.id
+  const nome = fornecedor?.name ?? fornecedor?.data?.name ?? 'Fornecedor'
+
+  if (novoId) {
+    fornecedorId.value = String(novoId)
+  }
+  sucesso('Fornecedor cadastrado', `${nome} foi selecionado automaticamente nesta compra.`)
 }
 
 // ---- Grupos (API) ----
@@ -130,7 +143,11 @@ const listaGrupos = computed(() => {
 })
 
 // ---- Produtos (API) ----
-const { data: produtosData, isLoading: carregandoProdutos } = useQuery({
+const {
+  data: produtosData,
+  isLoading: carregandoProdutos,
+  refetch: refetchProdutos,
+} = useQuery({
   queryKey: ['products'],
   queryFn: () => productService.getAll(),
   staleTime: 1000 * 60 * 5,
@@ -169,33 +186,41 @@ const total = computed(() =>
 )
 
 function adicionar(produto) {
-  const existente = itens.value.find((i) => i.id === produto.id)
+  const existente = itens.value.find((i) => String(i.id) === String(produto.id))
   if (existente) {
     existente.qtd += 1
     return
   }
 
-  const custoInicial = Number(produto.cost_price) || 0
+  const custoInicial = Number(produto.cost_price ?? produto.custo) || 0
 
   itens.value.push({
     id: produto.id,
-    nome: produto.name,
+    nome: produto.name ?? produto.nome,
     qtd: 1,
     custoCentavos: custoInicial > 0 ? String(Math.round(custoInicial * 100)) : '',
   })
 }
 
 function remover(id) {
-  itens.value = itens.value.filter((i) => i.id !== id)
+  itens.value = itens.value.filter((i) => String(i.id) !== String(id))
 }
 
 function alterarQtd(id, delta) {
-  const item = itens.value.find((i) => i.id === id)
+  const item = itens.value.find((i) => String(i.id) === String(id))
   if (item) item.qtd = Math.max(1, (Number(item.qtd) || 0) + delta)
 }
 
-function fornecedorCriado() {
-  sucesso('Fornecedor cadastrado', 'Selecione-o na lista de fornecedores.')
+// Callback do Modal de Produto Completo
+async function produtoCriadoEAdicionado(produtoCriado) {
+  await refetchProdutos()
+  if (produtoCriado) {
+    adicionar(produtoCriado)
+    sucesso(
+      'Produto cadastrado',
+      `${produtoCriado.name || produtoCriado.nome} foi adicionado à lista da compra.`,
+    )
+  }
 }
 
 async function finalizar() {
@@ -241,9 +266,9 @@ async function finalizar() {
     </template>
   </PageHeader>
 
-  <div class="space-y-4 p-4 md:p-6">
+  <div class="space-y-4 p-4 md:p-6 min-w-0">
     <div
-      class="panel flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:gap-4 md:p-4"
+      class="panel flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:gap-4 md:p-4 min-w-0"
     >
       <div v-for="(p, i) in passos" :key="p" class="flex min-w-0 items-center gap-2">
         <span
@@ -272,14 +297,19 @@ async function finalizar() {
       </StatusPill>
     </div>
 
-    <!-- PASSO 1: FORNECEDOR -->
     <Section v-if="passo === 1" titulo="Quem está vendendo para você?">
-      <div class="space-y-4 p-4 md:p-5">
-        <div class="max-w-md space-y-1.5">
+      <div class="space-y-4 p-4 md:p-5 min-w-0">
+        <div class="w-full max-w-md min-w-0 space-y-1.5">
           <FieldLabel for="fornecedor">Fornecedor</FieldLabel>
           <Select v-model="fornecedorId">
-            <SelectTrigger id="fornecedor" class="h-10 cursor-pointer">
-              <SelectValue placeholder="Selecione o fornecedor (opcional)" />
+            <SelectTrigger
+              id="fornecedor"
+              class="h-10 w-full min-w-0 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
+            >
+              <SelectValue
+                placeholder="Selecione o fornecedor (opcional)"
+                class="truncate min-w-0"
+              />
             </SelectTrigger>
             <SelectContent class="max-h-64">
               <div class="sticky top-0 z-10 border-b border-border bg-popover p-2">
@@ -300,7 +330,7 @@ async function finalizar() {
                 v-for="f in fornecedoresFiltrados"
                 :key="f.id"
                 :value="String(f.id)"
-                class="cursor-pointer text-xs"
+                class="cursor-pointer text-xs truncate"
               >
                 {{ f.name }}
               </SelectItem>
@@ -329,29 +359,41 @@ async function finalizar() {
       </div>
     </Section>
 
-    <!-- PASSO 2: PRODUTOS -->
-    <div v-else-if="passo === 2" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <div v-else-if="passo === 2" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] min-w-0">
       <Section
         titulo="Adicionar produtos"
         descricao="Selecione os produtos recebidos nesta compra."
       >
-        <div class="space-y-4 p-4 md:p-5">
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-12">
-            <div class="relative sm:col-span-8">
+        <template #acoes>
+          <Button
+            size="sm"
+            variant="outline"
+            class="cursor-pointer text-xs"
+            @click="modalProdutoAberto = true"
+          >
+            <Plus class="mr-1 size-3.5" /> Novo produto
+          </Button>
+        </template>
+
+        <div class="space-y-4 p-4 md:p-5 min-w-0">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-12 min-w-0">
+            <div class="relative sm:col-span-8 min-w-0">
               <Search
                 class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60"
               />
               <Input
                 v-model="buscaProduto"
                 placeholder="Buscar por nome ou SKU..."
-                class="h-9 cursor-text pl-9 text-xs"
+                class="h-9 cursor-text pl-9 text-xs w-full"
               />
             </div>
 
-            <div class="sm:col-span-4">
+            <div class="sm:col-span-4 min-w-0">
               <Select v-model="grupoSelecionado">
-                <SelectTrigger class="h-9 cursor-pointer text-xs">
-                  <SelectValue placeholder="Grupo" />
+                <SelectTrigger
+                  class="h-9 w-full min-w-0 cursor-pointer text-xs overflow-hidden text-ellipsis whitespace-nowrap"
+                >
+                  <SelectValue placeholder="Grupo" class="truncate min-w-0" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos" class="cursor-pointer text-xs"
@@ -361,7 +403,7 @@ async function finalizar() {
                     v-for="g in listaGrupos"
                     :key="g.id"
                     :value="String(g.id)"
-                    class="cursor-pointer text-xs"
+                    class="cursor-pointer text-xs truncate"
                   >
                     {{ g.name }}
                   </SelectItem>
@@ -379,7 +421,7 @@ async function finalizar() {
 
           <div
             v-else
-            class="max-h-[380px] divide-y divide-border overflow-y-auto rounded-lg border border-border"
+            class="max-h-[380px] divide-y divide-border overflow-y-auto rounded-lg border border-border min-w-0"
           >
             <div
               v-for="p in produtosFiltrados"
@@ -387,15 +429,16 @@ async function finalizar() {
               class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 bg-card px-3 py-2.5 transition-colors hover:bg-muted/40"
             >
               <div class="min-w-0">
-                <p class="truncate text-xs font-medium">{{ p.name }}</p>
+                <p class="truncate text-xs font-medium">{{ p.name || p.nome }}</p>
                 <p class="truncate text-[11px] text-muted-foreground">
-                  {{ p.sku }} · Grupo: {{ nomeGrupo(p) }} · Custo {{ brl(p.cost_price) }} · Estoque:
-                  {{ p.stock_quantity }} un.
+                  {{ p.sku }} · Grupo: {{ nomeGrupo(p) }} · Custo
+                  {{ brl(p.cost_price ?? p.custo) }} · Estoque:
+                  {{ p.stock_quantity ?? p.estoque }} un.
                 </p>
               </div>
               <Button
                 size="sm"
-                class="h-8 cursor-pointer bg-emerald-500 text-xs text-black hover:bg-emerald-600"
+                class="h-8 cursor-pointer bg-emerald-500 text-xs text-black hover:bg-emerald-600 shrink-0"
                 @click="adicionar(p)"
               >
                 <Plus class="mr-1 size-3.5" /> Adicionar
@@ -404,9 +447,19 @@ async function finalizar() {
 
             <div
               v-if="produtosFiltrados.length === 0"
-              class="p-6 text-center text-xs text-muted-foreground"
+              class="flex flex-col items-center justify-center space-y-3 p-8 text-center"
             >
-              Nenhum produto encontrado com os filtros aplicados.
+              <p class="text-xs text-muted-foreground">
+                Nenhum produto encontrado com os filtros aplicados.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                class="cursor-pointer text-xs"
+                @click="modalProdutoAberto = true"
+              >
+                <Plus class="mr-1 size-3.5" /> Cadastrar novo produto
+              </Button>
             </div>
           </div>
         </div>
@@ -420,13 +473,13 @@ async function finalizar() {
         />
         <template v-else>
           <ul class="max-h-[360px] divide-y divide-border overflow-y-auto">
-            <li v-for="i in itens" :key="i.id" class="space-y-2 px-4 py-3">
-              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+            <li v-for="i in itens" :key="i.id" class="space-y-2 px-4 py-3 min-w-0">
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 min-w-0">
                 <p class="truncate text-xs font-medium">{{ i.nome }}</p>
                 <Button
                   variant="ghost"
                   size="icon"
-                  class="size-6 cursor-pointer text-destructive hover:bg-destructive/10"
+                  class="size-6 cursor-pointer text-destructive hover:bg-destructive/10 shrink-0"
                   :aria-label="`Remover ${i.nome}`"
                   @click="remover(i.id)"
                 >
@@ -462,7 +515,7 @@ async function finalizar() {
                   </Button>
                 </div>
 
-                <div class="relative">
+                <div class="relative min-w-0">
                   <span
                     class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground"
                   >
@@ -477,7 +530,7 @@ async function finalizar() {
                   />
                 </div>
 
-                <span class="min-w-[70px] text-right text-xs font-semibold tabular-nums">
+                <span class="min-w-[70px] text-right text-xs font-semibold tabular-nums shrink-0">
                   {{ brl((Number(i.qtd) || 0) * custoValor(i)) }}
                 </span>
               </div>
@@ -492,7 +545,7 @@ async function finalizar() {
             <div class="flex gap-2">
               <Button variant="outline" class="cursor-pointer" @click="passo = 1">Voltar</Button>
               <Button
-                class="w-full cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+                class="flex-1 cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
                 @click="passo = 3"
               >
                 Revisar compra
@@ -503,23 +556,22 @@ async function finalizar() {
       </Section>
     </div>
 
-    <!-- PASSO 3: REVISAR -->
     <Section
       v-else-if="passo === 3"
       titulo="Revisar e finalizar"
       descricao="Confira antes de dar entrada no estoque."
     >
-      <div class="space-y-4 p-4 md:p-5">
+      <div class="space-y-4 p-4 md:p-5 min-w-0">
         <div class="grid gap-3 sm:grid-cols-2">
-          <div class="rounded-lg border border-border bg-muted/40 p-3">
+          <div class="rounded-lg border border-border bg-muted/40 p-3 min-w-0">
             <p class="text-xs text-muted-foreground">Fornecedor</p>
-            <p class="text-sm font-medium">
+            <p class="text-sm font-medium truncate">
               {{ fornecedorSelecionado?.name || 'Não informado' }}
             </p>
           </div>
-          <div class="rounded-lg border border-border bg-muted/40 p-3">
+          <div class="rounded-lg border border-border bg-muted/40 p-3 min-w-0">
             <p class="text-xs text-muted-foreground">Itens</p>
-            <p class="text-sm font-medium">
+            <p class="text-sm font-medium truncate">
               {{ itens.length }} produtos ·
               {{ itens.reduce((s, i) => s + (Number(i.qtd) || 0), 0) }} unidades
             </p>
@@ -530,12 +582,12 @@ async function finalizar() {
           <li
             v-for="i in itens"
             :key="i.id"
-            class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm"
+            class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm min-w-0"
           >
-            <span class="truncate">
+            <span class="truncate min-w-0">
               {{ i.nome }} <span class="text-muted-foreground">× {{ i.qtd }}</span>
             </span>
-            <span class="font-semibold">
+            <span class="font-semibold shrink-0">
               {{ brl((Number(i.qtd) || 0) * custoValor(i)) }}
             </span>
           </li>
@@ -573,5 +625,15 @@ async function finalizar() {
     </Section>
   </div>
 
-  <NewSupplier v-model:open="modalFornecedorAberto" @updated="fornecedorCriado" />
+  <NewSupplier
+    v-model:open="modalFornecedorAberto"
+    @created="fornecedorCriado"
+    @salvo="fornecedorCriado"
+  />
+
+  <ProductModal
+    v-model:open="modalProdutoAberto"
+    @created="produtoCriadoEAdicionado"
+    @salvo="produtoCriadoEAdicionado"
+  />
 </template>

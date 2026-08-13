@@ -432,48 +432,54 @@ function salvar() {
                   {{ Array.isArray(erros.group_id) ? erros.group_id[0] : erros.group_id }}
                 </p>
               </div>
-
               <div>
-                <label
-                  for="produto-fornecedor"
-                  class="mb-1.5 block text-sm font-medium text-foreground"
-                >
-                  Fornecedor (Opcional)
-                </label>
-                <div class="flex gap-2">
-                  <Select v-model="form.supplier_id">
-                    <SelectTrigger id="produto-fornecedor" class="!h-10 w-full cursor-pointer">
-                      <SelectValue
-                        :placeholder="
-                          carregandoFornecedores ? 'Carregando…' : 'Sem fornecedor (Avulso)'
-                        "
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none" class="cursor-pointer"
-                        >Sem fornecedor (Avulso)</SelectItem
-                      >
-                      <SelectItem
-                        v-for="s in listaFornecedores"
-                        :key="s.id"
-                        :value="String(s.id)"
-                        class="cursor-pointer"
-                      >
-                        {{ s.name }}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    class="h-10 w-10 shrink-0 cursor-pointer"
-                    title="Criar novo fornecedor"
-                    @click="modalFornecedorAberto = true"
+                <div>
+                  <label
+                    for="produto-fornecedor"
+                    class="mb-1.5 block text-sm font-medium text-foreground"
                   >
-                    <Plus class="size-4" />
-                  </Button>
+                    Fornecedor (Opcional)
+                  </label>
+                  <div class="flex gap-2 min-w-0 w-full">
+                    <Select v-model="form.supplier_id">
+                      <SelectTrigger
+                        id="produto-fornecedor"
+                        class="!h-10 w-full max-w-[280px] min-w-0 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
+                      >
+                        <SelectValue
+                          class="truncate block min-w-0"
+                          :placeholder="
+                            carregandoFornecedores ? 'Carregando…' : 'Sem fornecedor (Avulso)'
+                          "
+                        />
+                      </SelectTrigger>
+                      <SelectContent class="max-w-[320px]">
+                        <SelectItem value="none" class="cursor-pointer truncate">
+                          Sem fornecedor (Avulso)
+                        </SelectItem>
+                        <SelectItem
+                          v-for="s in listaFornecedores"
+                          :key="s.id"
+                          :value="String(s.id)"
+                          class="cursor-pointer truncate"
+                        >
+                          {{ s.name }}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      class="h-10 w-10 shrink-0 cursor-pointer"
+                      title="Criar novo fornecedor"
+                      @click="modalFornecedorAberto = true"
+                    >
+                      <Plus class="size-4" />
+                    </Button>
+                  </div>
                 </div>
+
               </div>
             </div>
           </div>
