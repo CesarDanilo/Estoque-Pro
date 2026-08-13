@@ -192,9 +192,12 @@ watch(
 
 // 🟢 auto-preenchimento: assim que a consulta de CPF/CNPJ encontra um
 // registro (documentoApi.status === 'found'), preenche automaticamente
-// nome, nascimento/gênero (só CPF) e também cidade/endereço/cep — mas só se
-// o usuário ainda não tiver digitado nada nesses campos, pra nunca
-// sobrescrever o que ele já preencheu manualmente.
+// nome (e, se for CPF, nascimento/gênero) — mas só se o usuário ainda não
+// tiver digitado nada nesses campos, pra nunca sobrescrever o que ele já
+// preencheu manualmente. É essa lógica que faz "nome" e "nascimento"
+// aparecerem sozinhos depois de digitar o CPF completo — ela depende do
+// composable useDocumentApiValidation fazer a consulta de fato (não incluso
+// nos arquivos enviados; se não estiver funcionando, revise-o).
 watch(
   () => documentoApi.status,
   (status) => {
@@ -203,7 +206,6 @@ watch(
     if (documentoApi.nome && !form.nome.trim()) {
       form.nome = documentoApi.nome.slice(0, NOME_MAX)
     }
-
     if (documentoApi.tipo === 'CPF' && ehPessoaFisica.value) {
       if (documentoApi.nascimento && !form.nascimento) {
         form.nascimento = paraDataInput(documentoApi.nascimento)
@@ -214,22 +216,6 @@ watch(
           form.genero = generoNormalizado
         }
       }
-    }
-
-    // campos de endereço vêm tanto pra CPF quanto pra CNPJ — só preenche
-    // se o usuário ainda não tiver digitado nada nesses campos
-    if (documentoApi.cidade && !form.cidade.trim()) {
-      form.cidade = documentoApi.cidade
-    }
-
-    if (documentoApi.endereco && !form.endereco.trim()) {
-      form.endereco = documentoApi.endereco
-    }
-
-    // cep é um composable de máscara (não um campo simples do form),
-    // então usa setValue em vez de atribuição direta
-    if (documentoApi.cep && !cep.raw.value) {
-      cep.setValue(documentoApi.cep)
     }
   },
 )
@@ -622,7 +608,7 @@ async function salvar() {
                   {{ erros.documento }}
                 </p>
                 <!-- 🟢 status da consulta CPF/CNPJ — é aqui que "encontrado" dispara o
-                     preenchimento automático de nome/nascimento/cidade/endereço/cep (ver watch acima) -->
+                     preenchimento automático de nome/nascimento (ver watch acima) -->
                 <p
                   v-else-if="documentoApi.status !== 'idle'"
                   class="mt-1 flex items-center gap-1 text-xs"

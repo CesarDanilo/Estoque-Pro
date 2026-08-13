@@ -1,8 +1,10 @@
 export function personToApi(pessoa) {
-  // 🔴 CORRIGIDO: o backend valida os campos "cnpj" (14 dígitos) e "cpf"
-  // (11 dígitos) separadamente — não existe campo "document" na validação
-  // do Laravel. Enviamos o valor digitado no campo correto de acordo com o
-  // tamanho do documento (11 = CPF, 14 = CNPJ).
+  // 🔴 CORRIGIDO (v2): o backend, pelo menos na validação de criação
+  // (POST /person), exige o campo "document" — a suposição anterior de que
+  // só "cnpj"/"cpf" seriam aceitos estava incompleta (o erro
+  // "The document field is required." confirma isso). Mantemos "cpf"/"cnpj"
+  // também, caso outras rotas (ex.: update) dependam deles, e enviamos
+  // "document" com o valor limpo para cobrir a validação de criação.
   const documentoLimpo = (pessoa.documento ?? '').replace(/\D/g, '')
   const ehCnpj = documentoLimpo.length === 14
   const ehCpf = documentoLimpo.length === 11
@@ -10,6 +12,7 @@ export function personToApi(pessoa) {
   return {
     type: pessoa.type,
     name: pessoa.nome,
+    document: documentoLimpo || null,
     cnpj: ehCnpj ? documentoLimpo : null,
     cpf: ehCpf ? documentoLimpo : null,
     gender: pessoa.genero || null,
