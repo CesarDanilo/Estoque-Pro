@@ -50,17 +50,15 @@ const secoes = [
   },
   {
     label: 'Admin',
-    itens: [
-      { titulo: 'Usuários', url: '/usuarios', icone: Users },
-    ],
+    itens: [{ titulo: 'Usuários', url: '/usuarios', icone: Users }],
   },
   {
     label: 'Análise',
     itens: [
       { titulo: 'Relatórios', url: '/relatorios', icone: BarChart3 },
-      { titulo: 'Configurações', url: '/configuracoes', icone: Settings },
+      //{ titulo: 'Configurações', url: '/configuracoes', icone: Settings },
     ],
-  }
+  },
 ]
 
 const ui = useUiStore()
@@ -111,7 +109,9 @@ onMounted(() => {
   >
     <!-- Header -->
     <div class="flex min-w-0 items-center gap-2.5 border-b px-3 py-3 h-16">
-      <div class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+      <div
+        class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"
+      >
         <Boxes class="size-5" aria-hidden="true" />
       </div>
       <div v-if="!sidebarCollapsed" class="min-w-0">
@@ -136,9 +136,11 @@ onMounted(() => {
               :title="item.titulo"
               @click="ui.closeMobileSidebar()"
               class="flex items-center gap-2.5 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              :class="ativo(item.url, item.exato)
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                : 'text-sidebar-foreground/80'"
+              :class="
+                ativo(item.url, item.exato)
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  : 'text-sidebar-foreground/80'
+              "
             >
               <component :is="item.icone" class="size-4 shrink-0" aria-hidden="true" />
               <span v-if="!sidebarCollapsed" class="truncate">{{ item.titulo }}</span>
@@ -150,7 +152,9 @@ onMounted(() => {
 
     <!-- Footer -->
     <div class="flex min-w-0 items-center gap-2.5 border-t px-3 py-3">
-      <div class="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold">
+      <div
+        class="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-semibold"
+      >
         {{ iniciais }}
       </div>
       <div v-if="!sidebarCollapsed" class="min-w-0 flex-1">
