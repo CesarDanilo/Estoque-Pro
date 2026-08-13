@@ -1,120 +1,102 @@
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import api from '@/services/api' // Importação padrão (compatível com export default)
+import api from '@/services/api' // ajuste para o caminho real do seu client axios/fetch
 
+/**
+ * Composable central do Dashboard.
+ * Cada query bate em um endpoint do DashboardController (Laravel),
+ * exceto `recentSalesQuery`, que reaproveita o endpoint de listagem
+ * de vendas (GET /sales) já ordenado por mais recentes.
+ */
 export function useDashboard() {
   const queryClient = useQueryClient()
 
-  // 1. Resumo Métricas (Cards)
   const summaryQuery = useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/dashboard/summary')
-        return res.data
-      } catch (err) {
-        console.error('Erro ao buscar resumo:', err)
-        return null
-      }
+      const { data } = await api.get('/dashboard/summary')
+      return data
     },
-    staleTime: 1000 * 60 * 5,
   })
 
-  // 2. Mais Vendidos (Últimos 30 dias)
   const topProductsQuery = useQuery({
     queryKey: ['dashboard', 'top-products'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/dashboard/top-products?days=30&limit=5')
-        return res.data
-      } catch (err) {
-        console.error('Erro ao buscar produtos mais vendidos:', err)
-        return []
-      }
+      const { data } = await api.get('/dashboard/top-products', {
+        params: { days: 30, limit: 5 },
+      })
+      return data
     },
-    staleTime: 1000 * 60 * 10,
   })
 
-  // 3. Vendas por Grupo (Gráfico de Barras)
   const salesByGroupQuery = useQuery({
     queryKey: ['dashboard', 'sales-by-group'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/dashboard/sales-by-group?days=30')
-        return res.data
-      } catch (err) {
-        console.error('Erro ao buscar vendas por grupo:', err)
-        return []
-      }
+      const { data } = await api.get('/dashboard/sales-by-group', {
+        params: { days: 30 },
+      })
+      return data
     },
-    staleTime: 1000 * 60 * 10,
   })
 
-  // 4. Vendas Diárias (Gráfico de Linhas)
   const dailySalesQuery = useQuery({
     queryKey: ['dashboard', 'daily-sales'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/dashboard/daily-sales?days=15')
-        return res.data
-      } catch (err) {
-        console.error('Erro ao buscar vendas diárias:', err)
-        return []
-      }
+      const { data } = await api.get('/dashboard/daily-sales', {
+        params: { days: 15 },
+      })
+      return data
     },
-    staleTime: 1000 * 60 * 5,
   })
 
-  // 5. Produtos sem Vendas nos Últimos 30 dias
   const withoutSalesQuery = useQuery({
     queryKey: ['dashboard', 'without-sales'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/dashboard/without-sales?days=30')
-        return res.data
-      } catch (err) {
-        console.error('Erro ao buscar produtos sem vendas:', err)
-        return []
-      }
+      const { data } = await api.get('/dashboard/without-sales', {
+        params: { days: 30 },
+      })
+      return data
     },
-    staleTime: 1000 * 60 * 10,
   })
 
-  // 6. Produtos em Estoque Baixo / Crítico
+  // 🔴 Card "Precisa da sua atenção" — produtos com estoque <= mínimo,
+  // já ordenados do menor para o maior estoque restante pelo backend.
   const lowStockQuery = useQuery({
-    queryKey: ['products', 'low-stock'],
+    queryKey: ['dashboard', 'low-stock'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/products?status=low_stock')
-        return res.data?.data || res.data || []
-      } catch (err) {
-        console.error('Erro ao buscar estoque baixo:', err)
-        return []
-      }
+      const { data } = await api.get('/dashboard/low-stock', {
+        params: { limit: 50 },
+      })
+      return data
     },
-    staleTime: 1000 * 60 * 5,
   })
 
-  // 7. Lista de Vendas Recentes (Atividades)
+  // Reaproveita a listagem paginada de vendas (SaleController@index),
+  // pedindo poucos itens já ordenados por mais recentes (->latest()).
   const recentSalesQuery = useQuery({
-    queryKey: ['sales', 'recent'],
+    queryKey: ['dashboard', 'recent-sales'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/sales?per_page=5')
-        return res.data?.data || []
-      } catch (err) {
-        console.error('Erro ao buscar vendas recentes:', err)
-        return []
-      }
+      const { data } = await api.get('/sales', {
+        params: { per_page: 5 },
+      })
+      // SaleController::index retorna um paginator do Laravel,
+      // então os registros vêm dentro de `data.data`.
+      return data?.data ?? []
     },
-    staleTime: 1000 * 60 * 2,
   })
 
-  // Revalidação global dos dados do Dashboard
+  /**
+   * Revalida (refetch) todas as queries do dashboard de uma vez.
+   * Chamado após salvar um produto ou registrar uma venda.
+   */
   async function revalidarDashboard() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      queryClient.invalidateQueries({ queryKey: ['products'] }),
-      queryClient.invalidateQueries({ queryKey: ['sales'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'top-products'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'sales-by-group'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'daily-sales'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'without-sales'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'low-stock'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'recent-sales'] }),
     ])
   }
 
