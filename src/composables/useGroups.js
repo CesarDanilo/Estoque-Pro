@@ -1,21 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { groupService } from '@/services/groupService'
 
-export function useGroups(buscaRef) {
+export function useGroups(buscaRef, paginaRef) {
   const queryClient = useQueryClient()
 
-  // 1. QUERY: Buscar lista de grupos (Com Cache e suporte a Busca)
+  // 1. QUERY: Buscar lista de grupos (paginada, com busca)
   const groupsQuery = useQuery({
-    queryKey: ['groups', buscaRef],
-    queryFn: () => groupService.listar({ search: buscaRef?.value || '' }),
-    select: (data) => (Array.isArray(data) ? data : data.data || []),
+    queryKey: ['groups', buscaRef, paginaRef],
+    queryFn: () =>
+      groupService.listar({
+        search: buscaRef?.value || '',
+        page: paginaRef?.value || 1,
+      }),
   })
 
   // 2. MUTATION: Criar novo grupo
   const createMutation = useMutation({
     mutationFn: (payload) => groupService.criar(payload),
     onSuccess: () => {
-      // Invalida o cache e força a atualização automática da lista de grupos
       queryClient.invalidateQueries({ queryKey: ['groups'] })
     },
   })

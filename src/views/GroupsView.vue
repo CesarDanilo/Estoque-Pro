@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   FolderPlus,
   Loader2,
@@ -43,9 +43,10 @@ onMounted(() => {
 
 const NOME_BUSCA_MAX = 60
 const busca = ref('')
+const pagina = ref(1)
 
 // TanStack Query
-const { groupsQuery, updateMutation, deleteMutation } = useGroups(busca)
+const { groupsQuery, updateMutation, deleteMutation } = useGroups(busca, pagina)
 
 const modalAberto = ref(false)
 const grupoEditando = ref(null)
@@ -53,9 +54,20 @@ const grupoParaExcluir = ref(null)
 
 const { sucesso, erro } = useFeedback()
 
-// Atalhos reativos vindos da Query
-const listaGrupos = computed(() => groupsQuery.data.value || [])
+// Resposta paginada da API: { data: [...], current_page, last_page, total }
+const listaGrupos = computed(() => groupsQuery.data.value?.data || [])
 const carregando = computed(() => groupsQuery.isLoading.value)
+
+const meta = computed(() => ({
+  paginaAtual: groupsQuery.data.value?.current_page || 1,
+  totalPaginas: groupsQuery.data.value?.last_page || 1,
+  total: groupsQuery.data.value?.total || 0,
+}))
+
+// Sempre que a busca mudar, volta pra primeira página
+watch(busca, () => {
+  pagina.value = 1
+})
 
 const totalSubgrupos = computed(() => {
   return listaGrupos.value.reduce((acc, g) => acc + (g.subgrupos || 0), 0)
@@ -103,6 +115,10 @@ function confirmarExclusao() {
     onSuccess: () => {
       sucesso('Grupo excluído', `O grupo "${grupo.name}" foi excluído com sucesso.`)
       grupoParaExcluir.value = null
+      // se excluiu o último item da página, volta uma página
+      if (listaGrupos.value.length === 1 && meta.value.paginaAtual > 1) {
+        pagina.value = meta.value.paginaAtual - 1
+      }
     },
     onError: (err) => {
       const msg = err.response?.data?.message || 'Erro ao excluir grupo.'
@@ -138,7 +154,7 @@ function confirmarExclusao() {
               Total de Grupos
             </p>
             <p class="mt-1 text-2xl font-bold text-foreground">
-              {{ listaGrupos.length }}
+              {{ meta.total }}
             </p>
           </div>
           <div class="rounded-lg bg-emerald-500/10 p-2.5 text-emerald-500">
@@ -200,7 +216,7 @@ function confirmarExclusao() {
           >
             Exibindo
             <span class="font-semibold text-foreground">{{ listaGrupos.length }}</span>
-            registros
+            de {{ meta.total }} registros
           </div>
         </div>
 
@@ -342,6 +358,34 @@ function confirmarExclusao() {
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div
+            class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5"
+          >
+            <p class="text-xs text-muted-foreground">
+              {{ meta.total }} grupo(s) · página {{ meta.paginaAtual }} de {{ meta.totalPaginas }}
+            </p>
+            <div class="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                class="cursor-pointer disabled:cursor-not-allowed"
+                :disabled="meta.paginaAtual === 1"
+                @click="pagina = meta.paginaAtual - 1"
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                class="cursor-pointer disabled:cursor-not-allowed"
+                :disabled="meta.paginaAtual === meta.totalPaginas"
+                @click="pagina = meta.paginaAtual + 1"
+              >
+                Próxima
+              </Button>
+            </div>
           </div>
         </template>
       </Section>

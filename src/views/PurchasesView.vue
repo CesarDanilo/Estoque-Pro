@@ -79,7 +79,7 @@ watch([busca, fornecedorFiltro, status], () => {
 // ---- Fornecedores (para o filtro) ----
 const { data: fornecedoresData } = useQuery({
   queryKey: ['suppliers'],
-  queryFn: () => supplierService.getAll(),
+  queryFn: () => supplierService.getAll({ per_page: 100 }),
   staleTime: 1000 * 60 * 5,
 })
 const listaFornecedores = computed(() => fornecedoresData.value || [])

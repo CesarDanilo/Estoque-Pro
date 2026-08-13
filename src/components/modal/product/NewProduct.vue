@@ -180,7 +180,7 @@ const {
   refetch: refetchFornecedores,
 } = useQuery({
   queryKey: ['suppliers'],
-  queryFn: () => supplierService.getAll(),
+  queryFn: () => supplierService.getAll({ per_page: 100 }),
   enabled: computed(() => props.open),
   staleTime: 1000 * 60 * 10,
 })

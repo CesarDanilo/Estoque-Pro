@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import {
   Building2,
@@ -49,6 +49,11 @@ const { sucesso, erro } = useFeedback()
 
 const NOME_BUSCA_MAX = 60
 const busca = ref('')
+const pagina = ref(1)
+
+watch(busca, () => {
+  pagina.value = 1
+})
 
 // ---- Modais e Diálogos ----
 const modalAberto = ref(false)
@@ -82,14 +87,21 @@ function formatarTelefone(v) {
 
 // ---- TanStack Query: Buscar Lista de Fornecedores ----
 const {
-  data: listaFornecedores,
+  data: respostaFornecedores,
   isLoading,
   isError,
 } = useQuery({
-  queryKey: ['suppliers', busca],
-  queryFn: () => supplierService.getAll(busca.value),
-  staleTime: 1000 * 60 * 5, // Cache de 5 minutos
+  queryKey: ['suppliers', busca, pagina],
+  queryFn: () => supplierService.getAll({ search: busca.value, page: pagina.value }),
+  staleTime: 1000 * 60 * 5,
 })
+
+const listaFornecedores = computed(() => respostaFornecedores.value?.data || [])
+const metaFornecedores = computed(() => ({
+  paginaAtual: respostaFornecedores.value?.current_page || 1,
+  totalPaginas: respostaFornecedores.value?.last_page || 1,
+  total: respostaFornecedores.value?.total || 0,
+}))
 
 // ---- TanStack Mutation: Excluir Fornecedor ----
 const deleteMutation = useMutation({
@@ -408,6 +420,35 @@ function confirmarExclusao() {
             </table>
           </div>
         </template>
+        <div
+          v-if="!isLoading && listaFornecedores.length > 0"
+          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border px-4 py-3 md:px-5"
+        >
+          <p class="text-xs text-muted-foreground">
+            {{ metaFornecedores.total }} fornecedor(es) · página
+            {{ metaFornecedores.paginaAtual }} de {{ metaFornecedores.totalPaginas }}
+          </p>
+          <div class="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              class="cursor-pointer disabled:cursor-not-allowed"
+              :disabled="metaFornecedores.paginaAtual === 1"
+              @click="pagina = metaFornecedores.paginaAtual - 1"
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="cursor-pointer disabled:cursor-not-allowed"
+              :disabled="metaFornecedores.paginaAtual === metaFornecedores.totalPaginas"
+              @click="pagina = metaFornecedores.paginaAtual + 1"
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
       </Section>
     </div>
 

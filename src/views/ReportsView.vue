@@ -67,7 +67,7 @@ ChartJS.register(
   ChartTooltip,
   Legend,
   Filler,
-  ChartDataLabels
+  ChartDataLabels,
 )
 
 const { sucesso } = useFeedback()
@@ -158,14 +158,14 @@ const porGrupoPessoas = computed(() =>
   ['Cliente', 'Fornecedor', 'Colaborador'].map((g) => ({
     nome: g,
     valor: pessoas.filter((p) => p.grupo === g).length,
-  }))
+  })),
 )
 
 const porGeneroPessoas = computed(() =>
   ['Feminino', 'Masculino', 'Não informado'].map((g) => ({
     nome: g,
     valor: pessoas.filter((p) => p.genero === g).length,
-  }))
+  })),
 )
 const totalPessoasGenero = computed(() => porGeneroPessoas.value.reduce((s, p) => s + p.valor, 0))
 
@@ -204,14 +204,14 @@ const comprasPorFornecedor = computed(() =>
   Array.from(new Set(compras.map((c) => c.fornecedor))).map((f) => ({
     nome: f.split(' ')[0],
     valor: compras.filter((c) => c.fornecedor === f).reduce((s, c) => s + totalDoc(c.itens), 0),
-  }))
+  })),
 )
 
 const produtosPorGrupo = computed(() =>
   Array.from(new Set(produtos.map((p) => p.grupo))).map((g) => ({
     nome: g,
     valor: produtos.filter((p) => p.grupo === g).length,
-  }))
+  })),
 )
 const totalProdutosGrupo = computed(() => produtosPorGrupo.value.reduce((s, p) => s + p.valor, 0))
 const grupoAtivo = ref(null)
@@ -223,7 +223,7 @@ function alternarGrupo(nome) {
 const produtosPorMarca = computed(() =>
   Array.from(new Set(produtos.map((p) => p.marca).filter(Boolean)))
     .map((m) => ({ nome: m, valor: produtos.filter((p) => p.marca === m).length }))
-    .sort((a, b) => b.valor - a.valor)
+    .sort((a, b) => b.valor - a.valor),
 )
 
 // ---- Produtos ativos x inativos ----
@@ -240,11 +240,11 @@ const faturamento = computed(() =>
   brl(
     vendas
       .filter((v) => v.status !== 'cancelada')
-      .reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
-  )
+      .reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0),
+  ),
 )
 const itensVendidos = computed(() =>
-  String(vendas.reduce((s, v) => s + v.itens.reduce((a, i) => a + i.qtd, 0), 0))
+  String(vendas.reduce((s, v) => s + v.itens.reduce((a, i) => a + i.qtd, 0), 0)),
 )
 
 // ==================================================================
@@ -255,13 +255,17 @@ const limiteMaisVendidos = ref(10)
 
 const maisVendidosFiltrados = computed(() => {
   const termo = buscaMaisVendidos.value.trim().toLowerCase()
-  const base = termo ? maisVendidos.filter((p) => p.nome.toLowerCase().includes(termo)) : maisVendidos
+  const base = termo
+    ? maisVendidos.filter((p) => p.nome.toLowerCase().includes(termo))
+    : maisVendidos
   return [...base].sort((a, b) => b.vendidos30d - a.vendidos30d)
 })
 const maxVendidos30d = computed(() =>
-  Math.max(1, ...maisVendidosFiltrados.value.map((p) => p.vendidos30d))
+  Math.max(1, ...maisVendidosFiltrados.value.map((p) => p.vendidos30d)),
 )
-const maisVendidosVisiveis = computed(() => maisVendidosFiltrados.value.slice(0, limiteMaisVendidos.value))
+const maisVendidosVisiveis = computed(() =>
+  maisVendidosFiltrados.value.slice(0, limiteMaisVendidos.value),
+)
 
 function carregarMaisVendidos() {
   limiteMaisVendidos.value += 10
@@ -326,10 +330,10 @@ const dadosVendasPorDia = computed(() => ({
       borderWidth: 2,
       fill: true,
       pointBackgroundColor: vendasPorDia.map((_, i) =>
-        i === indicePico.value ? paleta[0] : i === indiceMinimo.value ? '#ef4444' : paleta[0]
+        i === indicePico.value ? paleta[0] : i === indiceMinimo.value ? '#ef4444' : paleta[0],
       ),
       pointRadius: vendasPorDia.map((_, i) =>
-        i === indicePico.value || i === indiceMinimo.value ? 5 : 0
+        i === indicePico.value || i === indiceMinimo.value ? 5 : 0,
       ),
       pointHoverRadius: 6,
       datalabels: {
@@ -689,10 +693,17 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
           <MetricCard rotulo="Faturamento" :valor="faturamento" tom="success" />
           <MetricCard rotulo="Vendas realizadas" :valor="String(vendas.length)" />
           <MetricCard rotulo="Itens vendidos" :valor="itensVendidos" />
-          <MetricCard rotulo="Produtos sem vendas" :valor="String(semVendas.length)" tom="warning" />
+          <MetricCard
+            rotulo="Produtos sem vendas"
+            :valor="String(semVendas.length)"
+            tom="warning"
+          />
         </div>
 
-        <Section titulo="Vendas por dia" descricao="Evolução do faturamento no período, com destaque para os extremos.">
+        <Section
+          titulo="Vendas por dia"
+          descricao="Evolução do faturamento no período, com destaque para os extremos."
+        >
           <TableSkeleton v-if="carregando" :linhas="4" :colunas="3" />
           <template v-else>
             <div class="grid grid-cols-2 gap-3 border-b border-border p-3 md:grid-cols-4 md:p-4">
@@ -707,7 +718,8 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
               <div class="rounded-lg bg-surface p-3">
                 <p class="text-meta">Melhor dia</p>
                 <p class="truncate text-lg font-semibold text-emerald-600">
-                  {{ vendasPorDia[indicePico]?.dia }} · {{ brl(vendasPorDia[indicePico]?.vendas ?? 0) }}
+                  {{ vendasPorDia[indicePico]?.dia }} ·
+                  {{ brl(vendasPorDia[indicePico]?.vendas ?? 0) }}
                 </p>
               </div>
               <div class="rounded-lg bg-surface p-3">
@@ -729,7 +741,10 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
         </Section>
 
         <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
-          <Section titulo="Vendas por grupo" :descricao="`${vendasPorGrupo.length} grupos no período`">
+          <Section
+            titulo="Vendas por grupo"
+            :descricao="`${vendasPorGrupo.length} grupos no período`"
+          >
             <div class="flex h-[460px] flex-col p-3 md:p-4">
               <div class="flex-1 overflow-x-auto">
                 <div
@@ -749,7 +764,9 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
             <div class="flex h-[460px] flex-col">
               <div class="shrink-0 border-b border-border p-2">
                 <div class="relative">
-                  <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Search
+                    class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                  />
                   <input
                     v-model="buscaMaisVendidos"
                     type="text"
@@ -803,8 +820,16 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
                 </li>
               </ul>
 
-              <div v-if="limiteMaisVendidos < maisVendidosFiltrados.length" class="shrink-0 border-t border-border p-2">
-                <Button variant="ghost" size="sm" class="w-full cursor-pointer text-xs" @click="carregarMaisVendidos">
+              <div
+                v-if="limiteMaisVendidos < maisVendidosFiltrados.length"
+                class="shrink-0 border-t border-border p-2"
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="w-full cursor-pointer text-xs"
+                  @click="carregarMaisVendidos"
+                >
                   Carregar mais ({{ maisVendidosFiltrados.length - limiteMaisVendidos }} restantes)
                 </Button>
               </div>
@@ -825,7 +850,10 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
           <MetricCard rotulo="Produtos a repor" :valor="String(baixos.length)" tom="warning" />
         </div>
 
-        <Section titulo="Compras por fornecedor" :descricao="`${comprasPorFornecedor.length} fornecedores no período`">
+        <Section
+          titulo="Compras por fornecedor"
+          :descricao="`${comprasPorFornecedor.length} fornecedores no período`"
+        >
           <div class="overflow-x-auto">
             <div
               class="h-64 p-3 md:p-4"
@@ -836,10 +864,15 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
           </div>
         </Section>
 
-        <Section titulo="Produtos vendidos que precisam de reposição" descricao="Clique em um produto para editar o cadastro.">
+        <Section
+          titulo="Produtos vendidos que precisam de reposição"
+          descricao="Clique em um produto para editar o cadastro."
+        >
           <div class="border-b border-border p-2">
             <div class="relative">
-              <Search class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Search
+                class="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              />
               <input
                 v-model="buscaReposicao"
                 type="text"
@@ -850,7 +883,10 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
           </div>
 
           <ul class="max-h-[360px] divide-y divide-border overflow-y-auto">
-            <li v-if="baixosFiltrados.length === 0" class="p-4 text-center text-sm text-muted-foreground">
+            <li
+              v-if="baixosFiltrados.length === 0"
+              class="p-4 text-center text-sm text-muted-foreground"
+            >
               Nenhum produto encontrado.
             </li>
             <li v-for="p in baixosFiltrados" :key="p.id">
@@ -876,7 +912,10 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
       <!-- ============================= PRODUTOS ============================= -->
       <TabsContent value="produtos" class="space-y-4">
         <div class="grid gap-4 lg:grid-cols-2">
-          <Section titulo="Produtos por grupo" descricao="Distribuição percentual por grupo cadastrado.">
+          <Section
+            titulo="Produtos por grupo"
+            descricao="Distribuição percentual por grupo cadastrado."
+          >
             <div class="grid gap-4 p-3 sm:grid-cols-2 md:p-4">
               <div class="h-64">
                 <Pie :data="dadosProdutosPorGrupo" :options="opcoesDonut" />
@@ -897,7 +936,12 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
                       <span class="truncate">{{ p.nome }}</span>
                     </span>
                     <span class="shrink-0 text-muted-foreground">
-                      {{ p.valor }} · {{ totalProdutosGrupo > 0 ? Math.round((p.valor / totalProdutosGrupo) * 100) : 0 }}%
+                      {{ p.valor }} ·
+                      {{
+                        totalProdutosGrupo > 0
+                          ? Math.round((p.valor / totalProdutosGrupo) * 100)
+                          : 0
+                      }}%
                     </span>
                   </button>
                 </li>
@@ -912,8 +956,16 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
                 :key="n"
                 class="flex items-center justify-between px-4 py-3.5"
               >
-                <StatusPill :tom="n === 'normal' ? 'success' : n === 'baixo' ? 'warning' : 'danger'">
-                  {{ n === 'normal' ? 'Estoque normal' : n === 'baixo' ? 'Estoque baixo' : 'Sem estoque' }}
+                <StatusPill
+                  :tom="n === 'normal' ? 'success' : n === 'baixo' ? 'warning' : 'danger'"
+                >
+                  {{
+                    n === 'normal'
+                      ? 'Estoque normal'
+                      : n === 'baixo'
+                        ? 'Estoque baixo'
+                        : 'Sem estoque'
+                  }}
                 </StatusPill>
                 <span class="text-sm font-semibold">
                   {{ produtos.filter((p) => nivelEstoque(p) === n).length }} produtos
@@ -922,7 +974,10 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
             </ul>
           </Section>
 
-          <Section titulo="Produtos por marca" :descricao="`${produtosPorMarca.length} marcas cadastradas`">
+          <Section
+            titulo="Produtos por marca"
+            :descricao="`${produtosPorMarca.length} marcas cadastradas`"
+          >
             <div class="overflow-x-auto">
               <div
                 class="h-64 p-3 md:p-4"
@@ -952,7 +1007,12 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
                     <span class="truncate">{{ p.nome }}</span>
                   </span>
                   <span class="shrink-0 text-muted-foreground">
-                    {{ p.valor }} · {{ totalProdutosStatus > 0 ? Math.round((p.valor / totalProdutosStatus) * 100) : 0 }}%
+                    {{ p.valor }} ·
+                    {{
+                      totalProdutosStatus > 0
+                        ? Math.round((p.valor / totalProdutosStatus) * 100)
+                        : 0
+                    }}%
                   </span>
                 </li>
               </ul>
@@ -988,7 +1048,10 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
                     <span class="truncate">{{ p.nome }}</span>
                   </span>
                   <span class="shrink-0 text-muted-foreground">
-                    {{ p.valor }} · {{ totalPessoasGenero > 0 ? Math.round((p.valor / totalPessoasGenero) * 100) : 0 }}%
+                    {{ p.valor }} ·
+                    {{
+                      totalPessoasGenero > 0 ? Math.round((p.valor / totalPessoasGenero) * 100) : 0
+                    }}%
                   </span>
                 </li>
               </ul>
@@ -996,7 +1059,10 @@ const opcoesPessoasPorFaixaEtaria = computed(() => ({
           </Section>
         </div>
 
-        <Section titulo="Pessoas por faixa etária" descricao="Calculada a partir da data de nascimento cadastrada.">
+        <Section
+          titulo="Pessoas por faixa etária"
+          descricao="Calculada a partir da data de nascimento cadastrada."
+        >
           <div class="h-64 p-3 md:p-4">
             <Bar :data="dadosPessoasPorFaixaEtaria" :options="opcoesPessoasPorFaixaEtaria" />
           </div>

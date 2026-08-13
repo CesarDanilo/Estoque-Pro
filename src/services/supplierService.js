@@ -1,13 +1,12 @@
 import api from './api'
 
 export const supplierService = {
-  // GET /api/suppliers?search=...
-  async getAll(search = '') {
-    const response = await api.get('/suppliers', {
-      params: { search },
-    })
-    // Trata caso a API retorne { data: [...] } ou diretamente [...]
-    return response.data?.data || response.data
+  // GET /api/suppliers?search=...&page=...&per_page=...
+  // Aceita string (compatibilidade com chamadas antigas) ou objeto de params
+  async getAll(params = {}) {
+    const query = typeof params === 'string' ? { search: params } : params || {}
+    const response = await api.get('/suppliers', { params: query })
+    return response.data
   },
 
   // POST /api/suppliers
@@ -24,7 +23,6 @@ export const supplierService = {
 
   // DELETE /api/suppliers/:id
   async delete(id) {
-    // Garante que o id não vá como undefined ou objeto
     if (!id) throw new Error('ID do fornecedor não informado.')
 
     const response = await api.delete(`/suppliers/${String(id)}`)
