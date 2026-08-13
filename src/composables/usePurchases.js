@@ -24,7 +24,33 @@ export function usePurchases(filters = {}) {
     staleTime: 1000 * 60 * 2, // 2 minutos em cache
   })
 
-  // 2. Mutation: Criar Compra
+  // Computeds auxiliares extraídos do retorno paginado da API Laravel
+  const compras = computed(() => purchasesQuery.data.value?.data ?? [])
+  const totalPaginas = computed(() => purchasesQuery.data.value?.last_page ?? 1)
+  const totalRegistros = computed(() => purchasesQuery.data.value?.total ?? 0)
+  const pendingCountBackend = computed(() => purchasesQuery.data.value?.pending_count)
+
+  // Métricas calculadas
+  const totalComprado = computed(() =>
+    compras.value
+      .filter((c) => c.status !== 'cancelled')
+      .reduce((s, c) => s + Number(c.total || c.total_amount || 0), 0),
+  )
+
+  const ticketMedio = computed(() => {
+    const validas = compras.value.filter((c) => c.status !== 'cancelled')
+    if (validas.length === 0) return 0
+    return totalComprado.value / validas.length
+  })
+
+  const aguardandoRecebimento = computed(() => {
+    if (typeof pendingCountBackend.value === 'number') {
+      return pendingCountBackend.value
+    }
+    return compras.value.filter((c) => c.status === 'pending').length
+  })
+
+  // 2. Mutations
   const createPurchaseMutation = useMutation({
     mutationFn: (data) => purchaseService.createPurchase(data),
     onSuccess: () => {
@@ -33,7 +59,6 @@ export function usePurchases(filters = {}) {
     },
   })
 
-  // 3. Mutation: Atualizar Compra
   const updatePurchaseMutation = useMutation({
     mutationFn: ({ id, data }) => purchaseService.updatePurchase(id, data),
     onSuccess: () => {
@@ -42,7 +67,6 @@ export function usePurchases(filters = {}) {
     },
   })
 
-  // 4. Mutation: Excluir/Cancelar Compra
   const deletePurchaseMutation = useMutation({
     mutationFn: (id) => purchaseService.deletePurchase(id),
     onSuccess: () => {
@@ -51,23 +75,6 @@ export function usePurchases(filters = {}) {
     },
   })
 
-  // Computeds auxiliares extraídos do retorno paginado da API
-  const compras = computed(() => purchasesQuery.data.value?.data ?? [])
-  const totalPaginas = computed(() => purchasesQuery.data.value?.last_page ?? 1)
-  const totalRegistros = computed(() => purchasesQuery.data.value?.total ?? 0)
-
-  // Métricas calculadas
-  const totalComprado = computed(() =>
-    compras.value
-      .filter((c) => c.status !== 'cancelled')
-      .reduce((s, c) => s + Number(c.total || 0), 0),
-  )
-
-  const aguardandoRecebimento = computed(
-    () => compras.value.filter((c) => c.status === 'pending').length,
-  )
-
-  // Busca de uma compra específica com os itens completos
   async function getPurchase(id) {
     return purchaseService.getPurchase(id)
   }
@@ -83,6 +90,7 @@ export function usePurchases(filters = {}) {
 
     // Métricas
     totalComprado,
+    ticketMedio,
     aguardandoRecebimento,
 
     // Busca de detalhes

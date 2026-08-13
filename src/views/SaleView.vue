@@ -524,7 +524,7 @@ async function executarExclusao() {
       </MetricCard>
       <MetricCard
         rotulo="Aguardando pagamento"
-        :valor="formatBrl(aguardandoPagamento)"
+        :valor="aguardandoPagamento"
         tom="warning"
         :apoio="
           typeof vendasAguardandoPagamento === 'number'
