@@ -6,9 +6,13 @@ export function useSalesReport(periodRef) {
   return useQuery({
     queryKey: ['reports', 'sales', periodRef],
     queryFn: async () => {
-      const { data } = await api.get('/reports/sales', {
-        params: { period: periodRef.value },
-      })
+      // Espalha o objeto de período para enviar period, tipo, data, inicio e fim de forma limpa
+      const params =
+        typeof periodRef.value === 'object' && periodRef.value !== null
+          ? { ...periodRef.value }
+          : { period: periodRef.value }
+
+      const { data } = await api.get('/reports/sales', { params })
       return data
     },
     staleTime: 1000 * 60 * 5, // Cache por 5 minutos
@@ -20,9 +24,12 @@ export function usePurchasesReport(periodRef) {
   return useQuery({
     queryKey: ['reports', 'purchases', periodRef],
     queryFn: async () => {
-      const { data } = await api.get('/reports/purchases', {
-        params: { period: periodRef.value },
-      })
+      const params =
+        typeof periodRef.value === 'object' && periodRef.value !== null
+          ? { ...periodRef.value }
+          : { period: periodRef.value }
+
+      const { data } = await api.get('/reports/purchases', { params })
       return data
     },
     staleTime: 1000 * 60 * 5,
@@ -42,11 +49,16 @@ export function useProductsReport() {
 }
 
 // 4. Relatório de Pessoas
-export function usePeopleReport() {
+export function usePeopleReport(periodRef) {
   return useQuery({
-    queryKey: ['reports', 'people'],
+    queryKey: ['reports', 'people', periodRef],
     queryFn: async () => {
-      const { data } = await api.get('/reports/people')
+      const params =
+        periodRef?.value && typeof periodRef.value === 'object'
+          ? { ...periodRef.value }
+          : { period: periodRef?.value }
+
+      const { data } = await api.get('/reports/people', { params })
       return data
     },
     staleTime: 1000 * 60 * 10,

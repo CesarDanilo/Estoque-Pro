@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import {
   RefreshCw,
@@ -9,6 +9,8 @@ import {
   Package,
   Users,
   Search,
+  Calendar as CalendarIcon,
+  X,
 } from 'lucide-vue-next'
 
 // Vue Chart.js e Chart.js
@@ -52,7 +54,87 @@ const queryClient = useQueryClient()
 
 // Estados principais
 const activeTab = ref('vendas')
-const selectedPeriod = ref('7d')
+
+// --- ESTADOS DO FILTRO DE DATA AVANÇADO ---
+const filtroDataAberto = ref(false)
+const dataFiltroRef = ref(null)
+
+const tipoData = ref('7d')
+const dataUnica = ref('')
+const dataInicio = ref('')
+const dataFim = ref('')
+
+const presetsData = [
+  { valor: '7d', rotulo: 'Últimos 7 dias' },
+  { valor: '30d', rotulo: 'Últimos 30 dias' },
+  { valor: '90d', rotulo: 'Últimos 90 dias' },
+  { valor: 'este_mes', rotulo: 'Este mês' },
+  { valor: 'mes_anterior', rotulo: 'Mês anterior' },
+]
+
+// Fechar o popover ao clicar fora
+const handleClickOutside = (event) => {
+  if (dataFiltroRef.value && !dataFiltroRef.value.contains(event.target)) {
+    filtroDataAberto.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+
+const selecionarPreset = (valor) => {
+  tipoData.value = valor
+  dataUnica.value = ''
+  dataInicio.value = ''
+  dataFim.value = ''
+}
+
+const selecionarModoPersonalizado = (modo) => {
+  tipoData.value = modo
+}
+
+const limparFiltroData = () => {
+  tipoData.value = '7d'
+  dataUnica.value = ''
+  dataInicio.value = ''
+  dataFim.value = ''
+  filtroDataAberto.value = false
+}
+
+// Rótulo dinâmico exibido no botão do filtro
+const rotuloFiltroData = computed(() => {
+  if (tipoData.value === 'personalizado_dia' && dataUnica.value) {
+    return `Dia: ${dataUnica.value.split('-').reverse().join('/')}`
+  }
+  if (tipoData.value === 'personalizado_periodo' && dataInicio.value && dataFim.value) {
+    const inicio = dataInicio.value.split('-').reverse().join('/')
+    const fim = dataFim.value.split('-').reverse().join('/')
+    return `${inicio} - ${fim}`
+  }
+  const presetEncontrado = presetsData.find((p) => p.valor === tipoData.value)
+  return presetEncontrado ? presetEncontrado.rotulo : 'Filtrar período'
+})
+
+// Objeto unificado enviado para as queries (compatível com o backend)
+const selectedPeriod = computed(() => {
+  if (tipoData.value === 'personalizado_dia') {
+    return { period: 'personalizado', tipo: 'dia', data: dataUnica.value }
+  }
+  if (tipoData.value === 'personalizado_periodo') {
+    return {
+      period: 'personalizado',
+      tipo: 'periodo',
+      inicio: dataInicio.value,
+      fim: dataFim.value,
+    }
+  }
+  return { period: tipoData.value }
+})
 
 // Filtros internos
 const searchProductSales = ref('')
@@ -95,7 +177,6 @@ const filteredReplenishProducts = computed(() => {
 // CONFIGURAÇÕES DOS GRÁFICOS (CHART.JS)
 // ==========================================
 
-// 1. Vendas por Dia
 const salesLineChartData = computed(() => {
   const rawData = salesQuery.data.value?.vendas_por_dia?.chart || []
   return {
@@ -161,7 +242,6 @@ const lineChartOptions = {
   },
 }
 
-// 2. Vendas por Grupo (Largura Total)
 const salesByGroupChartData = computed(() => {
   const rawData = salesQuery.data.value?.vendas_por_grupo || []
   return {
@@ -188,7 +268,6 @@ const verticalBarOptions = {
   },
 }
 
-// 3. Compras por Fornecedor (Largura Total)
 const purchasesSupplierChartData = computed(() => {
   const rawData = purchasesQuery.data.value?.compras_por_fornecedor || []
   return {
@@ -216,7 +295,6 @@ const horizontalBarOptions = {
   },
 }
 
-// 4. Produtos por Grupo (Cores Variadas)
 const productsGroupChartData = computed(() => {
   const rawData = productsQuery.data.value?.produtos_por_grupo || []
   return {
@@ -239,7 +317,6 @@ const productsGroupChartData = computed(() => {
   }
 })
 
-// 5. Situação do Estoque (Donut)
 const stockDoughnutData = computed(() => {
   const stock = productsQuery.data.value?.situacao_estoque || {
     normal: 0,
@@ -258,7 +335,6 @@ const stockDoughnutData = computed(() => {
   }
 })
 
-// 6. Pessoas por Grupo (Protegido com Array.isArray)
 const peopleGroupChartData = computed(() => {
   const rawData = peopleQuery.data.value?.pessoas_por_grupo
   const safeData = Array.isArray(rawData) ? rawData : []
@@ -275,7 +351,6 @@ const peopleGroupChartData = computed(() => {
   }
 })
 
-// 7. Pessoas por Faixa Etária (Protegido com Array.isArray)
 const peopleAgeChartData = computed(() => {
   const rawData = peopleQuery.data.value?.pessoas_por_faixa_etaria
   const safeData = Array.isArray(rawData) ? rawData : []
@@ -317,14 +392,139 @@ const doughnutOptions = {
       </div>
 
       <div class="flex items-center gap-3">
-        <select
-          v-model="selectedPeriod"
-          class="bg-[#18181b] border border-[#27272a] text-xs font-medium rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-[#10b981] transition cursor-pointer"
-        >
-          <option value="7d">Últimos 7 dias</option>
-          <option value="30d">Últimos 30 dias</option>
-          <option value="90d">Últimos 90 dias</option>
-        </select>
+        <div ref="dataFiltroRef" class="relative">
+          <button
+            type="button"
+            class="flex h-9 w-44 cursor-pointer items-center gap-2 rounded-lg border border-[#27272a] bg-[#18181b] px-3 text-xs font-medium transition-colors hover:bg-[#27272a]/50"
+            :class="
+              !['7d', '30d', '90d'].includes(tipoData)
+                ? 'border-emerald-500/50 text-white'
+                : 'text-[#a1a1aa]'
+            "
+            @click="filtroDataAberto = !filtroDataAberto"
+          >
+            <CalendarIcon class="size-3.5 shrink-0 text-[#a1a1aa]" />
+            <span class="truncate">{{ rotuloFiltroData }}</span>
+            <X
+              v-if="!['7d', '30d', '90d'].includes(tipoData)"
+              class="ml-auto size-3 shrink-0 text-[#a1a1aa] transition-colors hover:text-white"
+              @click.stop="limparFiltroData"
+            />
+          </button>
+
+          <Transition
+            enter-active-class="transition ease-out duration-100"
+            enter-from-class="opacity-0 scale-95"
+            enter-to-class="opacity-100 scale-100"
+            leave-active-class="transition ease-in duration-75"
+            leave-from-class="opacity-100 scale-100"
+            leave-to-class="opacity-0 scale-95"
+          >
+            <div
+              v-if="filtroDataAberto"
+              class="absolute right-0 top-[calc(100%+6px)] z-50 w-72 rounded-xl border border-[#27272a] bg-[#18181b] p-3 shadow-xl"
+            >
+              <p class="mb-2 text-[11px] font-semibold uppercase text-[#a1a1aa]">Atalhos</p>
+              <div class="mb-3 grid grid-cols-2 gap-1.5">
+                <button
+                  v-for="preset in presetsData"
+                  :key="preset.valor"
+                  type="button"
+                  class="cursor-pointer rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-colors"
+                  :class="
+                    tipoData === preset.valor
+                      ? 'border-emerald-500/50 bg-emerald-500/10 text-white font-semibold'
+                      : 'border-transparent bg-[#09090b] text-[#a1a1aa] hover:text-white'
+                  "
+                  @click="selecionarPreset(preset.valor)"
+                >
+                  {{ preset.rotulo }}
+                </button>
+              </div>
+
+              <div class="border-t border-[#27272a] pt-3">
+                <p class="mb-2 text-[11px] font-semibold uppercase text-[#a1a1aa]">Personalizado</p>
+
+                <div class="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-[#09090b] p-1">
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
+                    :class="
+                      tipoData === 'personalizado_dia'
+                        ? 'bg-[#18181b] text-white shadow-sm font-semibold'
+                        : 'text-[#a1a1aa] hover:text-white'
+                    "
+                    @click="selecionarModoPersonalizado('personalizado_dia')"
+                  >
+                    Dia específico
+                  </button>
+                  <button
+                    type="button"
+                    class="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
+                    :class="
+                      tipoData === 'personalizado_periodo'
+                        ? 'bg-[#18181b] text-white shadow-sm font-semibold'
+                        : 'text-[#a1a1aa] hover:text-white'
+                    "
+                    @click="selecionarModoPersonalizado('personalizado_periodo')"
+                  >
+                    Período
+                  </button>
+                </div>
+
+                <div v-if="tipoData === 'personalizado_dia'" class="space-y-1.5">
+                  <label class="text-[11px] text-[#a1a1aa]">Selecione a data</label>
+                  <input
+                    v-model="dataUnica"
+                    type="date"
+                    class="h-9 w-full cursor-pointer rounded-lg border border-[#27272a] bg-[#09090b] px-2 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div v-else-if="tipoData === 'personalizado_periodo'" class="space-y-2">
+                  <div class="space-y-1">
+                    <label class="text-[11px] text-[#a1a1aa]">De</label>
+                    <input
+                      v-model="dataInicio"
+                      type="date"
+                      class="h-9 w-full cursor-pointer rounded-lg border border-[#27272a] bg-[#09090b] px-2 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[11px] text-[#a1a1aa]">Até</label>
+                    <input
+                      v-model="dataFim"
+                      type="date"
+                      :min="dataInicio || undefined"
+                      class="h-9 w-full cursor-pointer rounded-lg border border-[#27272a] bg-[#09090b] px-2 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <p v-else class="py-1 text-[11px] text-[#a1a1aa]">
+                  Escolha "Dia específico" ou "Período" para uma data personalizada.
+                </p>
+              </div>
+
+              <div class="mt-3 flex items-center justify-between border-t border-[#27272a] pt-3">
+                <button
+                  type="button"
+                  class="h-8 px-3 cursor-pointer text-xs text-[#a1a1aa] hover:text-white transition"
+                  @click="limparFiltroData"
+                >
+                  Limpar
+                </button>
+                <button
+                  type="button"
+                  class="h-8 px-3.5 cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs rounded-lg transition"
+                  @click="filtroDataAberto = false"
+                >
+                  Aplicar
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
 
         <button
           @click="handleRefresh"
