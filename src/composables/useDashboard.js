@@ -1,12 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import api from '@/services/api' // ajuste para o caminho real do seu client axios/fetch
+import api from '@/services/api'
 
-/**
- * Composable central do Dashboard.
- * Cada query bate em um endpoint do DashboardController (Laravel),
- * exceto `recentSalesQuery`, que reaproveita o endpoint de listagem
- * de vendas (GET /sales) já ordenado por mais recentes.
- */
 export function useDashboard() {
   const queryClient = useQueryClient()
 
@@ -58,8 +52,6 @@ export function useDashboard() {
     },
   })
 
-  // 🔴 Card "Precisa da sua atenção" — produtos com estoque <= mínimo,
-  // já ordenados do menor para o maior estoque restante pelo backend.
   const lowStockQuery = useQuery({
     queryKey: ['dashboard', 'low-stock'],
     queryFn: async () => {
@@ -70,24 +62,21 @@ export function useDashboard() {
     },
   })
 
-  // Reaproveita a listagem paginada de vendas (SaleController@index),
-  // pedindo poucos itens já ordenados por mais recentes (->latest()).
   const recentSalesQuery = useQuery({
-    queryKey: ['dashboard', 'recent-sales'],
+    queryKey: ['dashboard', 'recent-activities'],
     queryFn: async () => {
-      const { data } = await api.get('/sales', {
-        params: { per_page: 5 },
-      })
-      // SaleController::index retorna um paginator do Laravel,
-      // então os registros vêm dentro de `data.data`.
-      return data?.data ?? []
+      try {
+        const { data } = await api.get('/dashboard/recent-activities', {
+          params: { limit: 10 },
+        })
+        return Array.isArray(data) ? data : (data?.data ?? [])
+      } catch (err) {
+        console.error('Erro ao buscar atividades recentes:', err)
+        return []
+      }
     },
   })
 
-  /**
-   * Revalida (refetch) todas as queries do dashboard de uma vez.
-   * Chamado após salvar um produto ou registrar uma venda.
-   */
   async function revalidarDashboard() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] }),
@@ -96,7 +85,7 @@ export function useDashboard() {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'daily-sales'] }),
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'without-sales'] }),
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'low-stock'] }),
-      queryClient.invalidateQueries({ queryKey: ['dashboard', 'recent-sales'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'recent-activities'] }),
     ])
   }
 

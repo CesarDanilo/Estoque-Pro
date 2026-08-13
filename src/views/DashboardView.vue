@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Line, Bar } from 'vue-chartjs'
 import {
+  ArrowDownLeft,
   ArrowUpRight,
   BarChart3,
   CheckCircle2,
@@ -56,7 +57,7 @@ function dataBR(dataString) {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(data)
 }
 
-// --- Computed Properties Tratadas ---
+// --- Computed Properties ---
 const atencao = computed(() =>
   Array.isArray(lowStockQuery.data.value) ? lowStockQuery.data.value : [],
 )
@@ -68,39 +69,34 @@ const semVendas = computed(() =>
 )
 
 const atividades = computed(() => {
-  const listaVendas = Array.isArray(recentSalesQuery.data.value) ? recentSalesQuery.data.value : []
-  return listaVendas.map((v) => ({
-    id: v.id,
-    tipo: 'saida',
-    titulo: `Venda ${v.code || String(v.id).slice(0, 8)} · ${v.customer?.name || 'Cliente Avulso'}`,
-    data: v.created_at,
-    valor: Number(v.total || 0),
-    // Mantém o objeto original da venda para poder reabrir o modal em modo de edição
-    raw: v,
-  }))
+  const lista = Array.isArray(recentSalesQuery.data.value) ? recentSalesQuery.data.value : []
+
+  return lista.map((item) => {
+    if (item.tipo) return item
+
+    return {
+      id: item.id,
+      tipo: 'saida',
+      titulo: `Venda ${item.code || String(item.id).slice(0, 8)} · ${item.customer?.name || 'Cliente Avulso'}`,
+      data: item.created_at,
+      valor: Number(item.total || 0),
+      raw: item,
+    }
+  })
 })
 
-// --- Estados e Callbacks dos Modais ---
+// --- Estados dos Modais ---
 const modalProdutoAberto = ref(false)
 const produtoSelecionado = ref(null)
-// Evita cliques duplicados enquanto o produto completo é buscado na API
 const carregandoProdutoEdicao = ref(false)
 
 const modalVendaAberto = ref(false)
-// Quando preenchido, o modal de venda abre em modo edição já com esta venda
-// (usado ao clicar num item de "Atividades recentes"). Quando null, o modal
-// abre em modo criação normal ("Nova venda").
 const vendaEmEdicao = ref(null)
 
-// Ao fechar o modal de venda, sempre volta pro estado de criação limpo
 watch(modalVendaAberto, (aberto) => {
   if (!aberto) vendaEmEdicao.value = null
 })
 
-// Os endpoints de resumo do dashboard (baixo estoque, mais vendidos) retornam
-// apenas um payload enxuto do produto (nome, sku, estoque, grupo) — sem custo,
-// preço de venda, estoque mínimo, descrição, etc. Por isso, antes de abrir o
-// modal de edição, buscamos o produto completo em /products/{id}.
 async function abrirEdicaoProduto(produtoResumido) {
   if (!produtoResumido?.id || carregandoProdutoEdicao.value) return
 
@@ -122,8 +118,10 @@ function abrirModalVenda() {
 }
 
 function abrirEdicaoVenda(atividade) {
-  vendaEmEdicao.value = atividade.raw || atividade
-  modalVendaAberto.value = true
+  if (atividade.tipo === 'saida') {
+    vendaEmEdicao.value = atividade.raw || atividade
+    modalVendaAberto.value = true
+  }
 }
 
 async function onProdutoSalvo() {
@@ -134,28 +132,26 @@ async function onVendaSalva() {
   await revalidarDashboard()
 }
 
-// --- Configuração dos Gráficos ---
+// --- Gráficos ---
 const pontosGraficoDiario = computed(() =>
   Array.isArray(dailySalesQuery.data.value) ? dailySalesQuery.data.value : [],
 )
 
-const chartDataVendasCompras = computed(() => {
-  return {
-    labels: pontosGraficoDiario.value.map((d) => dataBR(d.data)),
-    datasets: [
-      {
-        label: 'Vendas',
-        data: pontosGraficoDiario.value.map((d) => Number(d.total || 0)),
-        borderColor: '#00BC7D',
-        backgroundColor: 'rgba(49, 202, 146, 0.15)',
-        fill: true,
-        tension: 0.35,
-        pointRadius: 2,
-        pointHoverRadius: 5,
-      },
-    ],
-  }
-})
+const chartDataVendasCompras = computed(() => ({
+  labels: pontosGraficoDiario.value.map((d) => dataBR(d.data)),
+  datasets: [
+    {
+      label: 'Vendas',
+      data: pontosGraficoDiario.value.map((d) => Number(d.total || 0)),
+      borderColor: '#00BC7D',
+      backgroundColor: 'rgba(49, 202, 146, 0.15)',
+      fill: true,
+      tension: 0.35,
+      pointRadius: 2,
+      pointHoverRadius: 5,
+    },
+  ],
+}))
 
 const chartOptionsVendasCompras = {
   responsive: true,
@@ -431,12 +427,24 @@ const chartOptionsGrupo = {
               class="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
               @click="abrirEdicaoVenda(a)"
             >
-              <span class="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary">
-                <ArrowUpRight class="size-4" aria-hidden="true" />
+              <span
+                class="grid size-7 place-items-center rounded-lg"
+                :class="
+                  a.tipo === 'entrada'
+                    ? 'bg-blue-500/15 text-blue-500'
+                    : 'bg-emerald-500/15 text-emerald-500'
+                "
+              >
+                <ArrowDownLeft v-if="a.tipo === 'entrada'" class="size-4" aria-hidden="true" />
+                <ArrowUpRight v-else class="size-4" aria-hidden="true" />
               </span>
+
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium">{{ a.titulo }}</p>
-                <p class="text-xs text-muted-foreground">{{ dataBR(a.data) }} · saída de estoque</p>
+                <p class="text-xs text-muted-foreground">
+                  {{ dataBR(a.data) }} ·
+                  {{ a.tipo === 'entrada' ? 'entrada de estoque' : 'saída de estoque' }}
+                </p>
               </div>
               <span class="text-sm font-semibold">{{ brl(a.valor) }}</span>
             </button>
@@ -456,9 +464,11 @@ const chartOptionsGrupo = {
 
     <Section titulo="Produtos ativos sem vendas nos últimos 30 dias">
       <div class="flex flex-wrap gap-2 p-4 md:p-5">
-        <StatusPill v-if="semVendas.length > 0" v-for="p in semVendas" :key="p.id" tom="neutral">
-          {{ p.name || p.nome }} · {{ p.stock_quantity ?? p.estoque ?? 0 }} un.
-        </StatusPill>
+        <template v-if="semVendas.length > 0">
+          <StatusPill v-for="p in semVendas" :key="p.id" tom="neutral">
+            {{ p.name || p.nome }} · {{ p.stock_quantity ?? p.estoque ?? 0 }} un.
+          </StatusPill>
+        </template>
 
         <p v-else class="text-sm text-muted-foreground">
           Todos os produtos ativos registraram vendas no período.
