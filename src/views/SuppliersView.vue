@@ -115,9 +115,29 @@ const deleteMutation = useMutation({
     fornecedorParaExcluir.value = null
   },
   onError: (err) => {
+    fornecedorParaExcluir.value = null
+
+    if (ehErroDeVinculo(err)) {
+      erro(
+        'Não é possível excluir este fornecedor',
+        'Existem compras vinculadas a este fornecedor. Desative-o ou exclua/desvincule as compras relacionadas antes de excluir.',
+      )
+      return
+    }
+
     erro('Erro ao excluir', err.response?.data?.message || 'Não foi possível remover o fornecedor.')
   },
 })
+
+// Detecta violação de chave estrangeira (fornecedor com compras vinculadas),
+// seja pelo status HTTP (409 Conflict, convenção comum para esse caso) ou,
+// como salvaguarda, pelo texto cru do erro do Postgres quando ele vaza na
+// mensagem da API (ex.: ambiente com debug ligado).
+function ehErroDeVinculo(err) {
+  const status = err.response?.status
+  const mensagem = err.response?.data?.message || ''
+  return status === 409 || /foreign key|violates foreign key constraint/i.test(mensagem)
+}
 
 // ---- TanStack Mutation: Alternar Status (Ativo/Inativo) ----
 const toggleStatusMutation = useMutation({
@@ -164,6 +184,25 @@ function alternarStatusFornecedor(fornecedor) {
     id: fornecedor.id,
     active: !fornecedor.active,
   })
+}
+
+// Fornecedor com compras vinculadas não pode ser excluído (restrição de
+// chave estrangeira no banco). Avisamos o usuário antes mesmo de tentar,
+// em vez de deixar o erro cru do banco chegar até ele.
+function possuiVinculo(fornecedor) {
+  return (fornecedor?.purchases_count || 0) > 0
+}
+
+function tentarExcluir(fornecedor) {
+  if (possuiVinculo(fornecedor)) {
+    erro(
+      'Não é possível excluir este fornecedor',
+      `"${fornecedor.name}" possui ${fornecedor.purchases_count} compra(s) vinculada(s). Desative o fornecedor ou exclua/desvincule essas compras antes de removê-lo.`,
+    )
+    return
+  }
+
+  fornecedorParaExcluir.value = fornecedor
 }
 
 function confirmarExclusao() {
@@ -326,7 +365,7 @@ function confirmarExclusao() {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       class="cursor-pointer text-destructive"
-                      @click="fornecedorParaExcluir = f"
+                      @click="tentarExcluir(f)"
                     >
                       <Trash2 class="size-4" /> Excluir
                     </DropdownMenuItem>
@@ -408,7 +447,7 @@ function confirmarExclusao() {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           class="cursor-pointer text-destructive"
-                          @click="fornecedorParaExcluir = f"
+                          @click="tentarExcluir(f)"
                         >
                           <Trash2 class="size-4" /> Excluir
                         </DropdownMenuItem>

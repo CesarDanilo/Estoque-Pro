@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Line, Bar } from 'vue-chartjs'
 import {
@@ -24,6 +24,8 @@ import NewProduct from '@/components/modal/product/NewProduct.vue'
 import NewSale from '@/components/modal/sale/NewSale.vue'
 
 import { useDashboard } from '@/composables/useDashboard'
+import { useFeedback } from '@/composables/useFeedBack'
+import api from '@/services/api'
 
 onMounted(() => {
   document.title = 'Dashboard — Estoque Pro'
@@ -40,6 +42,8 @@ const {
   recentSalesQuery,
   revalidarDashboard,
 } = useDashboard()
+
+const { erro } = useFeedback()
 
 // --- Helper Functions ---
 function brl(valor) {
@@ -71,24 +75,54 @@ const atividades = computed(() => {
     titulo: `Venda ${v.code || String(v.id).slice(0, 8)} · ${v.customer?.name || 'Cliente Avulso'}`,
     data: v.created_at,
     valor: Number(v.total || 0),
+    // Mantém o objeto original da venda para poder reabrir o modal em modo de edição
+    raw: v,
   }))
 })
-
-function rotaAtividade(a) {
-  return a.tipo === 'saida' ? `/vendas/${a.id}` : `/compras/${a.id}`
-}
 
 // --- Estados e Callbacks dos Modais ---
 const modalProdutoAberto = ref(false)
 const produtoSelecionado = ref(null)
-const modalVendaAberto = ref(false)
+// Evita cliques duplicados enquanto o produto completo é buscado na API
+const carregandoProdutoEdicao = ref(false)
 
-function abrirEdicaoProduto(produto) {
-  produtoSelecionado.value = produto
-  modalProdutoAberto.value = true
+const modalVendaAberto = ref(false)
+// Quando preenchido, o modal de venda abre em modo edição já com esta venda
+// (usado ao clicar num item de "Atividades recentes"). Quando null, o modal
+// abre em modo criação normal ("Nova venda").
+const vendaEmEdicao = ref(null)
+
+// Ao fechar o modal de venda, sempre volta pro estado de criação limpo
+watch(modalVendaAberto, (aberto) => {
+  if (!aberto) vendaEmEdicao.value = null
+})
+
+// Os endpoints de resumo do dashboard (baixo estoque, mais vendidos) retornam
+// apenas um payload enxuto do produto (nome, sku, estoque, grupo) — sem custo,
+// preço de venda, estoque mínimo, descrição, etc. Por isso, antes de abrir o
+// modal de edição, buscamos o produto completo em /products/{id}.
+async function abrirEdicaoProduto(produtoResumido) {
+  if (!produtoResumido?.id || carregandoProdutoEdicao.value) return
+
+  carregandoProdutoEdicao.value = true
+  try {
+    const { data } = await api.get(`/products/${produtoResumido.id}`)
+    produtoSelecionado.value = data?.data || data
+    modalProdutoAberto.value = true
+  } catch (e) {
+    erro('Erro ao carregar produto', 'Não foi possível carregar os dados completos do produto.')
+  } finally {
+    carregandoProdutoEdicao.value = false
+  }
 }
 
 function abrirModalVenda() {
+  vendaEmEdicao.value = null
+  modalVendaAberto.value = true
+}
+
+function abrirEdicaoVenda(atividade) {
+  vendaEmEdicao.value = atividade.raw || atividade
   modalVendaAberto.value = true
 }
 
@@ -275,7 +309,8 @@ const chartOptionsGrupo = {
         <li v-for="p in atencao" :key="p.id">
           <button
             type="button"
-            class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
+            class="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5 disabled:cursor-wait disabled:opacity-60"
+            :disabled="carregandoProdutoEdicao"
             @click="abrirEdicaoProduto(p)"
           >
             <div class="min-w-0">
@@ -354,7 +389,8 @@ const chartOptionsGrupo = {
           <li v-for="(item, i) in maisVendidos" :key="item.product_id || i">
             <button
               type="button"
-              class="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
+              class="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5 disabled:cursor-wait disabled:opacity-60"
+              :disabled="carregandoProdutoEdicao"
               @click="item.product && abrirEdicaoProduto(item.product)"
             >
               <span
@@ -390,9 +426,10 @@ const chartOptionsGrupo = {
       <Section titulo="Atividades recentes" descricao="Últimas movimentações de estoque.">
         <ul v-if="atividades.length > 0" class="max-h-72 divide-y divide-border overflow-y-auto">
           <li v-for="a in atividades" :key="`${a.tipo}-${a.id}`">
-            <RouterLink
-              :to="rotaAtividade(a)"
-              class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 md:px-5"
+            <button
+              type="button"
+              class="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
+              @click="abrirEdicaoVenda(a)"
             >
               <span class="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary">
                 <ArrowUpRight class="size-4" aria-hidden="true" />
@@ -402,7 +439,7 @@ const chartOptionsGrupo = {
                 <p class="text-xs text-muted-foreground">{{ dataBR(a.data) }} · saída de estoque</p>
               </div>
               <span class="text-sm font-semibold">{{ brl(a.valor) }}</span>
-            </RouterLink>
+            </button>
           </li>
         </ul>
 
@@ -436,5 +473,5 @@ const chartOptionsGrupo = {
     @salvo="onProdutoSalvo"
   />
 
-  <NewSale v-model:open="modalVendaAberto" @salvo="onVendaSalva" />
+  <NewSale v-model:open="modalVendaAberto" :sale="vendaEmEdicao" @salvo="onVendaSalva" />
 </template>
