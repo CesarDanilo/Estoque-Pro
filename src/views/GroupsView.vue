@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CheckCircle2,
   FolderPlus,
   Loader2,
   MoreHorizontal,
@@ -13,6 +17,13 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -45,6 +56,13 @@ const NOME_BUSCA_MAX = 60
 const busca = ref('')
 const pagina = ref(1)
 
+// Estado de Filtro de Status
+const filtroStatus = ref('todos') // 'todos' | 'ativos' | 'inativos'
+
+// Estado de Ordenação da Tabela ('nome' | 'produtos')
+const ordemCampo = ref('nome')
+const ordemDirecao = ref('asc') // 'asc' | 'desc'
+
 // TanStack Query
 const { groupsQuery, updateMutation, deleteMutation } = useGroups(busca, pagina)
 
@@ -54,27 +72,73 @@ const grupoParaExcluir = ref(null)
 
 const { sucesso, erro } = useFeedback()
 
-// Resposta paginada da API: { data: [...], current_page, last_page, total }
-const listaGrupos = computed(() => groupsQuery.data.value?.data || [])
+// Resposta da API
+const listaGruposBruta = computed(() => groupsQuery.data.value?.data || [])
 const carregando = computed(() => groupsQuery.isLoading.value)
 
 const meta = computed(() => ({
   paginaAtual: groupsQuery.data.value?.current_page || 1,
   totalPaginas: groupsQuery.data.value?.last_page || 1,
   total: groupsQuery.data.value?.total || 0,
+  totalAtivos:
+    groupsQuery.data.value?.total_ativos ??
+    groupsQuery.data.value?.data?.filter((g) => g.active).length ??
+    0,
 }))
 
-// Sempre que a busca mudar, volta pra primeira página
-watch(busca, () => {
-  pagina.value = 1
-})
-
-const totalSubgrupos = computed(() => {
-  return listaGrupos.value.reduce((acc, g) => acc + (g.subgrupos || 0), 0)
-})
-
+// Produtos Totais
 const totalProdutos = computed(() => {
-  return listaGrupos.value.reduce((acc, g) => acc + (g.produtos || 0), 0)
+  return listaGruposBruta.value.reduce((acc, g) => acc + (g.produtos || 0), 0)
+})
+
+// Função para alternar a ordenação pelas colunas da tabela
+function alternarOrdenacao(campo) {
+  if (ordemCampo.value === campo) {
+    ordemDirecao.value = ordemDirecao.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    ordemCampo.value = campo
+    ordemDirecao.value = 'asc'
+  }
+}
+
+// Lista Filtrada e Ordenada
+const listaGrupos = computed(() => {
+  let resultado = [...listaGruposBruta.value]
+
+  // 1. Filtro por Status
+  if (filtroStatus.value === 'ativos') {
+    resultado = resultado.filter((g) => g.active)
+  } else if (filtroStatus.value === 'inativos') {
+    resultado = resultado.filter((g) => !g.active)
+  }
+
+  // 2. Ordenação por Coluna
+  resultado.sort((a, b) => {
+    let valorA, valorB
+
+    if (ordemCampo.value === 'nome') {
+      valorA = a.name || ''
+      valorB = b.name || ''
+      return ordemDirecao.value === 'asc'
+        ? valorA.localeCompare(valorB, 'pt-BR', { sensitivity: 'base' })
+        : valorB.localeCompare(valorA, 'pt-BR', { sensitivity: 'base' })
+    }
+
+    if (ordemCampo.value === 'produtos') {
+      valorA = a.produtos || 0
+      valorB = b.produtos || 0
+      return ordemDirecao.value === 'asc' ? valorA - valorB : valorB - valorA
+    }
+
+    return 0
+  })
+
+  return resultado
+})
+
+// Reseta para a página 1 ao alterar filtros
+watch([busca, filtroStatus], () => {
+  pagina.value = 1
 })
 
 function abrirNovoModal() {
@@ -115,7 +179,6 @@ function confirmarExclusao() {
     onSuccess: () => {
       sucesso('Grupo excluído', `O grupo "${grupo.name}" foi excluído com sucesso.`)
       grupoParaExcluir.value = null
-      // se excluiu o último item da página, volta uma página
       if (listaGrupos.value.length === 1 && meta.value.paginaAtual > 1) {
         pagina.value = meta.value.paginaAtual - 1
       }
@@ -165,14 +228,14 @@ function confirmarExclusao() {
         <div class="flex items-center justify-between rounded-xl border border-border bg-card p-4">
           <div>
             <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Subgrupos Vinculados
+              Grupos Ativos
             </p>
             <p class="mt-1 text-2xl font-bold text-foreground">
-              {{ totalSubgrupos }}
+              {{ meta.totalAtivos }}
             </p>
           </div>
           <div class="rounded-lg bg-blue-500/10 p-2.5 text-blue-500">
-            <FolderPlus class="size-5" />
+            <CheckCircle2 class="size-5" />
           </div>
         </div>
 
@@ -192,8 +255,10 @@ function confirmarExclusao() {
       </div>
 
       <Section>
-        <div class="flex items-center justify-between gap-4 border-b border-border p-4 md:p-5">
-          <div class="relative w-full md:max-w-sm">
+        <div
+          class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:justify-between md:p-5"
+        >
+          <div class="relative w-full md:max-w-xs">
             <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               v-model="busca"
@@ -210,13 +275,26 @@ function confirmarExclusao() {
             </span>
           </div>
 
-          <div
-            v-if="listaGrupos.length > 0"
-            class="hidden text-xs font-medium text-muted-foreground sm:block"
-          >
-            Exibindo
-            <span class="font-semibold text-foreground">{{ listaGrupos.length }}</span>
-            de {{ meta.total }} registros
+          <div class="flex flex-wrap items-center gap-2">
+            <Select v-model="filtroStatus">
+              <SelectTrigger class="w-[180px]">
+                <SelectValue placeholder="Selecione o status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os status</SelectItem>
+                <SelectItem value="ativos">Apenas Ativos</SelectItem>
+                <SelectItem value="inativos">Apenas Inativos</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div
+              v-if="listaGrupos.length > 0"
+              class="hidden text-xs font-medium text-muted-foreground sm:block ml-2"
+            >
+              Exibindo
+              <span class="font-semibold text-foreground">{{ listaGrupos.length }}</span>
+              registros
+            </div>
           </div>
         </div>
 
@@ -228,7 +306,7 @@ function confirmarExclusao() {
         <EmptyState
           v-else-if="listaGrupos.length === 0"
           titulo="Nenhum grupo encontrado"
-          descricao="Não encontramos nenhuma categoria com o termo informado. Tente buscar por outro nome ou cadastre um novo grupo."
+          descricao="Não encontramos nenhuma categoria correspondente aos filtros aplicados. Tente ajustar a busca ou cadastrar um novo grupo."
         >
           <template #acao>
             <Button
@@ -247,8 +325,8 @@ function confirmarExclusao() {
               <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                 <div class="min-w-0">
                   <p class="truncate text-sm font-medium">{{ g.name }}</p>
-                  <p class="truncate text-xs text-muted-foreground">
-                    {{ g.subgrupos || 0 }} subgrupos associados
+                  <p v-if="g.description" class="truncate text-xs text-muted-foreground">
+                    {{ g.description }}
                   </p>
                 </div>
 
@@ -294,9 +372,42 @@ function confirmarExclusao() {
             <table class="w-full text-sm">
               <thead class="text-xs text-muted-foreground">
                 <tr class="border-b border-border text-left">
-                  <th class="px-5 py-3 font-medium">Grupo</th>
-                  <th class="px-4 py-3 font-medium">Subgrupos</th>
-                  <th class="px-4 py-3 font-medium">Produtos</th>
+                  <th
+                    class="px-5 py-3 font-medium cursor-pointer select-none hover:text-foreground transition-colors"
+                    @click="alternarOrdenacao('nome')"
+                  >
+                    <div class="flex items-center gap-1.5">
+                      <span>Grupo</span>
+                      <ArrowUp
+                        v-if="ordemCampo === 'nome' && ordemDirecao === 'asc'"
+                        class="size-3.5"
+                      />
+                      <ArrowDown
+                        v-else-if="ordemCampo === 'nome' && ordemDirecao === 'desc'"
+                        class="size-3.5"
+                      />
+                      <ArrowUpDown v-else class="size-3.5 opacity-40" />
+                    </div>
+                  </th>
+
+                  <th
+                    class="px-4 py-3 font-medium cursor-pointer select-none hover:text-foreground transition-colors"
+                    @click="alternarOrdenacao('produtos')"
+                  >
+                    <div class="flex items-center gap-1.5">
+                      <span>Produtos</span>
+                      <ArrowUp
+                        v-if="ordemCampo === 'produtos' && ordemDirecao === 'asc'"
+                        class="size-3.5"
+                      />
+                      <ArrowDown
+                        v-else-if="ordemCampo === 'produtos' && ordemDirecao === 'desc'"
+                        class="size-3.5"
+                      />
+                      <ArrowUpDown v-else class="size-3.5 opacity-40" />
+                    </div>
+                  </th>
+
                   <th class="px-4 py-3 font-medium">Situação</th>
                   <th class="px-4 py-3 text-right font-medium">Ações</th>
                 </tr>
@@ -314,9 +425,6 @@ function confirmarExclusao() {
                     <p v-if="g.description" class="truncate text-xs text-muted-foreground">
                       {{ g.description }}
                     </p>
-                  </td>
-                  <td class="px-4 py-3 text-muted-foreground">
-                    {{ g.subgrupos || 0 }} subgrupo(s)
                   </td>
                   <td class="px-4 py-3">
                     <StatusPill tom="info"> {{ g.produtos || 0 }} produtos </StatusPill>
@@ -398,14 +506,14 @@ function confirmarExclusao() {
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {{ grupoParaExcluir?.name }}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Essa ação não poderá ser desfeita. Produtos e subgrupos associados a este grupo
-            precisarão ser reclassificados.
+            Essa ação não poderá ser desfeita. Os produtos associados a este grupo precisarão ser
+            reclassificados.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel :disabled="deleteMutation.isPending.value" class="cursor-pointer"
-            >Cancelar</AlertDialogCancel
-          >
+          <AlertDialogCancel :disabled="deleteMutation.isPending.value" class="cursor-pointer">
+            Cancelar
+          </AlertDialogCancel>
           <Button
             :disabled="deleteMutation.isPending.value"
             class="cursor-pointer bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
