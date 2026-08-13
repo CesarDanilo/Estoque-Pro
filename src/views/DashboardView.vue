@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Line, Bar } from 'vue-chartjs'
 import {
-  ArrowDownRight,
   ArrowUpRight,
   Package,
   Plus,
@@ -19,50 +18,64 @@ import MetricCard from '@/components/ui-kit/MetricCard.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import { Button } from '@/components/ui/button'
 import NewProduct from '@/components/modal/product/NewProduct.vue'
-import NewSale from '@/components/modal/sale/NewSale.vue' // Importação do modal de vendas
+import NewSale from '@/components/modal/sale/NewSale.vue'
 
-import {
-  brl,
-  compras,
-  dataBR,
-  maisVendidos,
-  nivelEstoque,
-  produtos,
-  totalDoc,
-  vendas,
-  vendasPorDia,
-  vendasPorGrupo,
-} from '@/lib/mockData'
+import { useDashboard } from '@/composables/useDashboard'
 
 onMounted(() => {
   document.title = 'Dashboard — Estoque Pro'
 })
 
-const hoje = '2026-08-10'
+// --- Instância do Composable ---
+const {
+  summaryQuery,
+  topProductsQuery,
+  salesByGroupQuery,
+  dailySalesQuery,
+  withoutSalesQuery,
+  lowStockQuery,
+  recentSalesQuery,
+  revalidarDashboard,
+} = useDashboard()
 
-// ---------- Totais gerais ----------
-const vendasHoje = computed(() => vendas.filter((v) => v.data === hoje && v.status !== 'cancelada'))
-const totalHoje = computed(() =>
-  vendasHoje.value.reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
+// --- Helper Functions ---
+function brl(valor) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0)
+}
+
+function dataBR(dataString) {
+  if (!dataString) return ''
+  const data = new Date(dataString)
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(data)
+}
+
+// --- Computed Properties Tratadas ---
+const atencao = computed(() =>
+  Array.isArray(lowStockQuery.data.value) ? lowStockQuery.data.value : [],
+)
+const maisVendidos = computed(() =>
+  Array.isArray(topProductsQuery.data.value) ? topProductsQuery.data.value : [],
+)
+const semVendas = computed(() =>
+  Array.isArray(withoutSalesQuery.data.value) ? withoutSalesQuery.data.value : [],
 )
 
-const vendasValidas = computed(() => vendas.filter((v) => v.status !== 'cancelada'))
-const totalVendas = computed(() =>
-  vendasValidas.value.reduce((s, v) => s + totalDoc(v.itens, v.desconto), 0)
-)
+const atividades = computed(() => {
+  const listaVendas = Array.isArray(recentSalesQuery.data.value) ? recentSalesQuery.data.value : []
+  return listaVendas.map((v) => ({
+    id: v.id,
+    tipo: 'saida',
+    titulo: `Venda ${v.code || String(v.id).slice(0, 8)} · ${v.customer?.name || 'Cliente Avulso'}`,
+    data: v.created_at,
+    valor: Number(v.total || 0),
+  }))
+})
 
-const comprasValidas = computed(() => compras.filter((c) => c.status !== 'cancelada'))
-const totalCompras = computed(() =>
-  comprasValidas.value.reduce((s, c) => s + totalDoc(c.itens), 0)
-)
+function rotaAtividade(a) {
+  return a.tipo === 'saida' ? `/vendas/${a.id}` : `/compras/${a.id}`
+}
 
-const baixos = computed(() => produtos.filter((p) => nivelEstoque(p) === 'baixo'))
-const semEstoque = computed(() => produtos.filter((p) => nivelEstoque(p) === 'sem'))
-const semVendas = computed(() => produtos.filter((p) => p.vendidos30d === 0 && p.status === 'ativo'))
-
-const atencao = computed(() => [...semEstoque.value, ...baixos.value])
-
-// ---------- Estados dos Modais ----------
+// --- Estados e Callbacks dos Modais ---
 const modalProdutoAberto = ref(false)
 const produtoSelecionado = ref(null)
 const modalVendaAberto = ref(false)
@@ -76,68 +89,33 @@ function abrirModalVenda() {
   modalVendaAberto.value = true
 }
 
-function onProdutoSalvo(dadosAtualizados) {
-  const alvo = produtos.find((p) => p.id === produtoSelecionado.value?.id)
-  if (alvo) Object.assign(alvo, dadosAtualizados)
+async function onProdutoSalvo() {
+  await revalidarDashboard()
 }
 
-function onVendaSalva(novaVenda) {
-  if (novaVenda) {
-    vendas.unshift(novaVenda)
+async function onVendaSalva() {
+  await revalidarDashboard()
+}
+
+// --- Configuração dos Gráficos ---
+const chartDataVendasCompras = computed(() => {
+  const pontos = Array.isArray(dailySalesQuery.data.value) ? dailySalesQuery.data.value : []
+  return {
+    labels: pontos.map((d) => dataBR(d.data)),
+    datasets: [
+      {
+        label: 'Vendas',
+        data: pontos.map((d) => Number(d.total || 0)),
+        borderColor: '#00BC7D',
+        backgroundColor: 'rgba(49, 202, 146, 0.15)',
+        fill: true,
+        tension: 0.35,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      },
+    ],
   }
-}
-
-// ---------- Atividades recentes ----------
-const atividades = computed(() =>
-  [
-    ...vendas.map((v) => ({
-      id: v.id,
-      tipo: 'saida',
-      titulo: `Venda ${v.numero} · ${v.cliente}`,
-      data: v.data,
-      valor: totalDoc(v.itens, v.desconto),
-    })),
-    ...compras.map((c) => ({
-      id: c.id,
-      tipo: 'entrada',
-      titulo: `Compra ${c.numero} · ${c.fornecedor}`,
-      data: c.data,
-      valor: totalDoc(c.itens),
-    })),
-  ].sort((a, b) => (a.data < b.data ? 1 : -1))
-)
-
-function rotaAtividade(a) {
-  return a.tipo === 'saida' ? `/vendas/${a.id}` : `/compras/${a.id}`
-}
-
-// ---------- Gráficos ----------
-const chartDataVendasCompras = computed(() => ({
-  labels: vendasPorDia.map((d) => d.dia),
-  datasets: [
-    {
-      label: 'Vendas',
-      data: vendasPorDia.map((d) => d.vendas),
-      borderColor: '#00BC7D',
-      backgroundColor: 'rgba(49, 202, 146, 0.15)',
-      fill: true,
-      tension: 0.35,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-    },
-    {
-      label: 'Compras',
-      data: vendasPorDia.map((d) => d.compras),
-      borderColor: '#F97316',
-      backgroundColor: 'rgba(249, 115, 22, 0.12)',
-      borderDash: [4, 4],
-      fill: true,
-      tension: 0.35,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-    },
-  ],
-}))
+})
 
 const chartOptionsVendasCompras = {
   responsive: true,
@@ -168,7 +146,7 @@ const chartOptionsVendasCompras = {
     x: { grid: { display: false } },
     y: {
       grid: { color: 'rgba(148,163,184,0.15)' },
-      ticks: { callback: (v) => `${v / 1000}k` },
+      ticks: { callback: (v) => `${v}` },
     },
   },
 }
@@ -176,16 +154,20 @@ const chartOptionsVendasCompras = {
 const ALTURA_POR_BARRA = 40
 const ALTURA_MINIMA_GRAFICO = 260
 
+const listaGrupos = computed(() =>
+  Array.isArray(salesByGroupQuery.data.value) ? salesByGroupQuery.data.value : [],
+)
+
 const alturaGraficoGrupo = computed(() =>
-  Math.max(ALTURA_MINIMA_GRAFICO, vendasPorGrupo.length * ALTURA_POR_BARRA)
+  Math.max(ALTURA_MINIMA_GRAFICO, listaGrupos.value.length * ALTURA_POR_BARRA),
 )
 
 const chartDataGrupo = computed(() => ({
-  labels: vendasPorGrupo.map((g) => g.grupo),
+  labels: listaGrupos.value.map((g) => g.grupo || 'Outros'),
   datasets: [
     {
       label: 'Vendas',
-      data: vendasPorGrupo.map((g) => g.valor),
+      data: listaGrupos.value.map((g) => Number(g.valor || 0)),
       backgroundColor: '#00BC7D',
       borderRadius: 6,
       barThickness: 22,
@@ -220,9 +202,7 @@ const chartOptionsGrupo = {
   >
     <template #acoes>
       <Button as-child variant="outline">
-        <RouterLink to="/compras/nova">
-          <ShoppingCart class="size-4" /> Nova compra
-        </RouterLink>
+        <RouterLink to="/compras/nova"> <ShoppingCart class="size-4" /> Nova compra </RouterLink>
       </Button>
       <Button
         class="bg-emerald-500 text-black hover:bg-emerald-600 cursor-pointer"
@@ -238,42 +218,46 @@ const chartOptionsGrupo = {
     <div class="grid grid-cols-2 gap-3 lg:grid-cols-5">
       <MetricCard
         rotulo="Vendas de hoje"
-        :valor="brl(totalHoje)"
-        :apoio="`${vendasHoje.length} vendas registradas`"
+        :valor="
+          summaryQuery.isLoading.value ? '...' : brl(summaryQuery.data.value?.vendas_hoje?.total)
+        "
+        :apoio="`${summaryQuery.data.value?.vendas_hoje?.count || 0} vendas registradas`"
         tom="success"
         :icone="Receipt"
       />
       <MetricCard
         rotulo="Total de vendas"
-        :valor="brl(totalVendas)"
-        :apoio="`${vendasValidas.length} vendas no total`"
+        :valor="
+          summaryQuery.isLoading.value ? '...' : brl(summaryQuery.data.value?.total_vendas?.total)
+        "
+        :apoio="`${summaryQuery.data.value?.total_vendas?.count || 0} vendas no total`"
         tom="success"
         :icone="TrendingUp"
       />
       <MetricCard
         rotulo="Total de compras"
-        :valor="brl(totalCompras)"
-        :apoio="`${comprasValidas.length} compras no total`"
+        :valor="brl(0)"
+        apoio="0 compras no total"
         tom="info"
         :icone="ShoppingCart"
       />
       <MetricCard
         rotulo="Produtos cadastrados"
-        :valor="String(produtos.length)"
-        :apoio="`${produtos.filter((p) => p.status === 'ativo').length} ativos`"
+        :valor="String(summaryQuery.data.value?.produtos?.total || 0)"
+        :apoio="`${summaryQuery.data.value?.produtos?.ativos || 0} ativos`"
         :icone="Package"
       />
       <MetricCard
         rotulo="Estoque baixo"
-        :valor="String(baixos.length + semEstoque.length)"
-        :apoio="`${semEstoque.length} sem estoque`"
+        :valor="String(summaryQuery.data.value?.produtos?.estoque_baixo || 0)"
+        apoio="Atenção recomendada"
         tom="warning"
         :icone="TriangleAlert"
       />
     </div>
 
     <Section
-      v-if="baixos.length > 0 || semEstoque.length > 0"
+      v-if="atencao.length > 0"
       titulo="Precisa da sua atenção"
       descricao="Produtos que podem faltar para as próximas vendas."
     >
@@ -291,13 +275,18 @@ const chartOptionsGrupo = {
             @click="abrirEdicaoProduto(p)"
           >
             <div class="min-w-0">
-              <p class="truncate text-sm font-medium">{{ p.nome }}</p>
+              <p class="truncate text-sm font-medium">{{ p.name || p.nome }}</p>
               <p class="truncate text-xs text-muted-foreground">
-                {{ p.sku }} · {{ p.grupo }} · mínimo {{ p.minimo }} un.
+                {{ p.sku }} · {{ p.group?.name || p.grupo || 'Sem grupo' }} · mínimo
+                {{ p.min_stock_quantity || p.minimo || 0 }} un.
               </p>
             </div>
-            <StatusPill :tom="nivelEstoque(p) === 'sem' ? 'danger' : 'warning'">
-              {{ nivelEstoque(p) === 'sem' ? 'Sem estoque' : `${p.estoque} un. restantes` }}
+            <StatusPill :tom="(p.stock_quantity ?? p.estoque) <= 0 ? 'danger' : 'warning'">
+              {{
+                (p.stock_quantity ?? p.estoque) <= 0
+                  ? 'Sem estoque'
+                  : `${p.stock_quantity ?? p.estoque} un. restantes`
+              }}
             </StatusPill>
           </button>
         </li>
@@ -306,8 +295,8 @@ const chartOptionsGrupo = {
 
     <div class="grid gap-4 xl:grid-cols-3">
       <Section
-        titulo="Vendas e compras por dia"
-        descricao="Entradas (compras) e saídas (vendas) do período."
+        titulo="Vendas por dia"
+        descricao="Movimentação das vendas no período."
         class="xl:col-span-2"
       >
         <div class="h-64 p-3 md:h-72 md:p-4">
@@ -333,44 +322,52 @@ const chartOptionsGrupo = {
         </template>
 
         <ul class="max-h-72 divide-y divide-border overflow-y-auto">
-          <li v-for="(p, i) in maisVendidos" :key="p.id">
+          <li v-if="maisVendidos.length === 0" class="p-4 text-sm text-muted-foreground">
+            Nenhuma venda registrada nos últimos 30 dias.
+          </li>
+          <li v-for="(item, i) in maisVendidos" :key="item.product_id || i">
             <button
               type="button"
               class="grid w-full cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/60 md:px-5"
-              @click="abrirEdicaoProduto(p)"
+              @click="item.product && abrirEdicaoProduto(item.product)"
             >
-              <span class="grid size-6 place-items-center rounded-md bg-muted text-xs font-semibold">
+              <span
+                class="grid size-6 place-items-center rounded-md bg-muted text-xs font-semibold"
+              >
                 {{ i + 1 }}
               </span>
               <div class="min-w-0">
-                <p class="truncate text-sm font-medium">{{ p.nome }}</p>
-                <p class="truncate text-xs text-muted-foreground">{{ p.grupo }}</p>
+                <p class="truncate text-sm font-medium">
+                  {{ item.product?.name || item.nome || 'Produto' }}
+                </p>
+                <p class="truncate text-xs text-muted-foreground">
+                  {{ item.product?.group?.name || item.grupo || 'Geral' }}
+                </p>
               </div>
-              <span class="text-sm font-semibold">{{ p.vendidos30d }} un.</span>
+              <span class="text-sm font-semibold"
+                >{{ item.total_quantity || item.vendidos30d || 0 }} un.</span
+              >
             </button>
           </li>
         </ul>
       </Section>
 
-      <Section titulo="Atividades recentes" descricao="Todas as movimentações de estoque.">
+      <Section titulo="Atividades recentes" descricao="Últimas movimentações de estoque.">
         <ul class="max-h-72 divide-y divide-border overflow-y-auto">
+          <li v-if="atividades.length === 0" class="p-4 text-sm text-muted-foreground">
+            Nenhuma atividade recente encontrada.
+          </li>
           <li v-for="a in atividades" :key="`${a.tipo}-${a.id}`">
             <RouterLink
               :to="rotaAtividade(a)"
               class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60 md:px-5"
             >
-              <span
-                class="grid size-7 place-items-center rounded-lg"
-                :class="a.tipo === 'saida' ? 'bg-primary/15 text-primary' : 'bg-emerald-500/15 text-emerald-600'"
-              >
-                <ArrowUpRight v-if="a.tipo === 'saida'" class="size-4" aria-hidden="true" />
-                <ArrowDownRight v-else class="size-4" aria-hidden="true" />
+              <span class="grid size-7 place-items-center rounded-lg bg-primary/15 text-primary">
+                <ArrowUpRight class="size-4" aria-hidden="true" />
               </span>
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium">{{ a.titulo }}</p>
-                <p class="text-xs text-muted-foreground">
-                  {{ dataBR(a.data) }} · {{ a.tipo === 'saida' ? 'saída de estoque' : 'entrada de estoque' }}
-                </p>
+                <p class="text-xs text-muted-foreground">{{ dataBR(a.data) }} · saída de estoque</p>
               </div>
               <span class="text-sm font-semibold">{{ brl(a.valor) }}</span>
             </RouterLink>
@@ -385,7 +382,7 @@ const chartOptionsGrupo = {
           Todos os produtos ativos tiveram vendas no período.
         </p>
         <StatusPill v-else v-for="p in semVendas" :key="p.id" tom="neutral">
-          {{ p.nome }} · {{ p.estoque }} un.
+          {{ p.name || p.nome }} · {{ p.stock_quantity ?? p.estoque ?? 0 }} un.
         </StatusPill>
       </div>
     </Section>
@@ -397,8 +394,5 @@ const chartOptionsGrupo = {
     @salvo="onProdutoSalvo"
   />
 
-  <NewSale
-    v-model:open="modalVendaAberto"
-    @salvo="onVendaSalva"
-  />
+  <NewSale v-model:open="modalVendaAberto" @salvo="onVendaSalva" />
 </template>
