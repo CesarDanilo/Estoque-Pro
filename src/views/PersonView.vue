@@ -66,6 +66,31 @@ const excluindo = ref(false)
 const modalAberto = ref(false)
 const pessoaEditando = ref(null)
 
+// ---- Formatação de documento (CPF/CNPJ) e telefone para exibição ----
+function formatarDocumento(v) {
+  if (!v) return '-'
+  const nums = String(v).replace(/\D/g, '')
+  if (nums.length === 11) {
+    return nums.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  }
+  if (nums.length === 14) {
+    return nums.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+  }
+  return v
+}
+
+function formatarTelefone(v) {
+  if (!v) return '-'
+  const nums = String(v).replace(/\D/g, '')
+  if (nums.length === 10) {
+    return nums.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3')
+  }
+  if (nums.length === 11) {
+    return nums.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
+  }
+  return v
+}
+
 const TECLAS_PERMITIDAS = new Set([
   'Backspace',
   'Delete',
@@ -264,7 +289,7 @@ async function confirmarExclusao() {
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium">{{ p.nome }}</p>
                 <p class="truncate text-xs text-muted-foreground">
-                  {{ p.documento }} · {{ p.telefone }}
+                  {{ formatarDocumento(p.documento) }} · {{ formatarTelefone(p.telefone) }}
                 </p>
               </div>
               <div class="flex items-center gap-1">
@@ -325,13 +350,15 @@ async function confirmarExclusao() {
                   <p class="truncate font-medium">{{ p.nome }}</p>
                   <p class="truncate text-xs text-muted-foreground">{{ p.email }}</p>
                 </td>
-                <td class="px-4 py-3 text-muted-foreground">{{ p.documento }}</td>
+                <td class="px-4 py-3 text-muted-foreground font-mono text-xs">
+                  {{ formatarDocumento(p.documento) }}
+                </td>
                 <td class="px-4 py-3">
                   <StatusPill tom="info">{{
                     p.type === 'individual' ? 'Física' : 'Jurídica'
                   }}</StatusPill>
                 </td>
-                <td class="px-4 py-3 text-muted-foreground">{{ p.telefone }}</td>
+                <td class="px-4 py-3 text-muted-foreground">{{ formatarTelefone(p.telefone) }}</td>
                 <td class="px-4 py-3">
                   <StatusPill :tom="p.status === 'ativo' ? 'success' : 'neutral'">
                     {{ p.status === 'ativo' ? 'Ativa' : 'Inativa' }}
