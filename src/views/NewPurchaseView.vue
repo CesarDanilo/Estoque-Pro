@@ -55,6 +55,9 @@ const modalProdutoAberto = ref(false)
 
 const passos = ['Fornecedor', 'Produtos e valores', 'Revisar e finalizar']
 
+// Fornecedor é obrigatório: sem ele, não é possível avançar para a Aba 2.
+const podeAvancarParaProdutos = computed(() => !!fornecedorId.value)
+
 function brl(valor) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
     Number(valor) || 0,
@@ -122,6 +125,12 @@ async function fornecedorCriado(fornecedor) {
 
   const novoId = fornecedor?.id ?? fornecedor?.data?.id
   const nome = fornecedor?.name ?? fornecedor?.data?.name ?? 'Fornecedor'
+
+  // Limpa a busca ANTES de selecionar: se houver texto digitado no campo de
+  // pesquisa que não bate com o nome do fornecedor recém-criado, ele fica de
+  // fora da lista filtrada e o Select não consegue exibir o label
+  // corretamente mesmo com o v-model apontando pro id certo.
+  buscaFornecedor.value = ''
 
   if (novoId) {
     fornecedorId.value = String(novoId)
@@ -224,11 +233,11 @@ async function produtoCriadoEAdicionado(produtoCriado) {
 }
 
 async function finalizar() {
-  if (isCreating.value || itens.value.length === 0) return
+  if (isCreating.value || itens.value.length === 0 || !fornecedorId.value) return
 
   try {
     const payload = {
-      supplier_id: fornecedorId.value || null,
+      supplier_id: fornecedorId.value,
       notes: observacoes.value || null,
       items: itens.value.map((i) => ({
         product_id: i.id,
@@ -300,16 +309,15 @@ async function finalizar() {
     <Section v-if="passo === 1" titulo="Quem está vendendo para você?">
       <div class="space-y-4 p-4 md:p-5 min-w-0">
         <div class="w-full max-w-md min-w-0 space-y-1.5">
-          <FieldLabel for="fornecedor">Fornecedor</FieldLabel>
+          <FieldLabel for="fornecedor"
+            >Fornecedor <span class="text-destructive">*</span></FieldLabel
+          >
           <Select v-model="fornecedorId">
             <SelectTrigger
               id="fornecedor"
               class="h-10 w-full min-w-0 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
             >
-              <SelectValue
-                placeholder="Selecione o fornecedor (opcional)"
-                class="truncate min-w-0"
-              />
+              <SelectValue placeholder="Selecione o fornecedor" class="truncate min-w-0" />
             </SelectTrigger>
             <SelectContent class="max-h-64">
               <div class="sticky top-0 z-10 border-b border-border bg-popover p-2">
@@ -342,6 +350,9 @@ async function finalizar() {
               </div>
             </SelectContent>
           </Select>
+          <p v-if="!fornecedorId" class="text-[11px] text-muted-foreground">
+            É necessário selecionar um fornecedor para continuar.
+          </p>
           <button
             type="button"
             class="cursor-pointer text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
@@ -351,7 +362,8 @@ async function finalizar() {
           </button>
         </div>
         <Button
-          class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
+          class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="!podeAvancarParaProdutos"
           @click="passo = 2"
         >
           Continuar
@@ -613,7 +625,7 @@ async function finalizar() {
           <Button variant="outline" class="cursor-pointer" @click="passo = 2">Voltar</Button>
           <Button
             class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="isCreating || itens.length === 0"
+            :disabled="isCreating || itens.length === 0 || !fornecedorId"
             @click="finalizar"
           >
             <Loader2 v-if="isCreating" class="size-4 animate-spin" />

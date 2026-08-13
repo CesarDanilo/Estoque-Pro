@@ -242,8 +242,10 @@ const chartOptionsGrupo = {
       />
       <MetricCard
         rotulo="Total de compras"
-        :valor="brl(0)"
-        apoio="0 compras no total"
+        :valor="
+          summaryQuery.isLoading.value ? '...' : brl(summaryQuery.data.value?.total_compras?.total)
+        "
+        :apoio="`${summaryQuery.data.value?.total_compras?.count || 0} compras no total`"
         tom="info"
         :icone="ShoppingCart"
       />
