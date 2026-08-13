@@ -336,7 +336,11 @@ function preencherFormulario() {
     form.observacoes = f.notes || f.observacoes || ''
     form.ativo = f.active !== undefined ? f.active : f.status === 'ativo'
 
-    documentoRaw.value = (f.document || f.documento || '').replace(/\D/g, '').slice(0, 14)
+    // Aceita tanto o formato antigo (document) quanto o novo (cnpj/cpf)
+    // vindos da API, para não quebrar ao carregar registros já existentes.
+    documentoRaw.value = (f.cnpj || f.cpf || f.document || f.documento || '')
+      .replace(/\D/g, '')
+      .slice(0, 14)
     ieRaw.value = (f.state_registration || f.ie || '').replace(/\D/g, '').slice(0, IE_MAX)
     telefoneRaw.value = (f.phone || f.telefone || '').replace(/\D/g, '').slice(0, 11)
     cepRaw.value = (f.zip_code || f.cep || '').replace(/\D/g, '').slice(0, 8)
@@ -402,10 +406,17 @@ function salvar() {
     return
   }
 
+  // 🔴 CORRIGIDO: o backend valida os campos "cnpj" (14 dígitos) e "cpf"
+  // (11 dígitos) separadamente — não "document". Enviamos o valor no campo
+  // correto de acordo com o tamanho do documento digitado.
+  const ehCnpj = documentoRaw.value.length === 14
+  const ehCpf = documentoRaw.value.length === 11
+
   const payload = {
     name: form.nome,
     trade_name: form.nomeFantasia,
-    document: documentoRaw.value,
+    cnpj: ehCnpj ? documentoRaw.value : null,
+    cpf: ehCpf ? documentoRaw.value : null,
     state_registration: ieRaw.value,
     contact_person: form.contato,
     phone: telefoneRaw.value,

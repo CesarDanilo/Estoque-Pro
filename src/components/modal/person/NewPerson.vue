@@ -57,7 +57,7 @@ const telefone = usePhoneMask()
 const cep = useCepMask()
 const email = useEmailValidation()
 
-// 🟢 NOVO — validação em tempo real via API (CPFHub / BrasilAPI / AbstractAPI).
+// 🟢 validação em tempo real via API (CPFHub / BrasilAPI / AbstractAPI).
 // Não bloqueia o envio: só informa/preenche automaticamente quando possível.
 const documentoApi = useDocumentApiValidation(() => documento.raw.value)
 const emailApi = useEmailApiValidation(() => email.value)
@@ -190,10 +190,14 @@ watch(
   },
 )
 
-// 🟢 NOVO — assim que a consulta de CPF/CNPJ encontra um registro, preenche
-// automaticamente nome (e, se for CPF, nascimento/gênero) — mas só se o
-// usuário ainda não tiver digitado nada nesses campos, pra nunca sobrescrever
-// o que ele já preencheu manualmente.
+// 🟢 auto-preenchimento: assim que a consulta de CPF/CNPJ encontra um
+// registro (documentoApi.status === 'found'), preenche automaticamente
+// nome (e, se for CPF, nascimento/gênero) — mas só se o usuário ainda não
+// tiver digitado nada nesses campos, pra nunca sobrescrever o que ele já
+// preencheu manualmente. É essa lógica que faz "nome" e "nascimento"
+// aparecerem sozinhos depois de digitar o CPF completo — ela depende do
+// composable useDocumentApiValidation fazer a consulta de fato (não incluso
+// nos arquivos enviados; se não estiver funcionando, revise-o).
 watch(
   () => documentoApi.status,
   (status) => {
@@ -416,10 +420,12 @@ function validar() {
   return resultado.data ?? payload
 }
 
-// mapa front -> API, usado só pra montar o diff no modo edição
+// mapa front -> API, usado só pra montar o diff no modo edição.
+// 🔴 "documento" NÃO entra aqui: o backend não tem um campo "document"
+// único — ele espera "cnpj" (14 dígitos) OU "cpf" (11 dígitos) separados.
+// Por isso ele é tratado à parte dentro de calcularDiff().
 const CAMPO_PARA_API = {
   nome: 'name',
-  documento: 'document',
   telefone: 'phone',
   email: 'email',
   type: 'type',
@@ -437,10 +443,23 @@ function calcularDiff(payloadAtual) {
   const diff = {}
 
   for (const [campoFront, valorAtual] of Object.entries(payloadAtual)) {
+    if (campoFront === 'documento') continue // tratado à parte abaixo
+
     const valorOriginal = snapshot ? snapshot[campoFront] : undefined
     if (valorAtual !== valorOriginal) {
       diff[CAMPO_PARA_API[campoFront]] = valorAtual
     }
+  }
+
+  // 🔴 CORRIGIDO: documento vai para "cnpj" ou "cpf" conforme o tamanho
+  // digitado (11 = CPF, 14 = CNPJ), nunca para "document".
+  const documentoAtual = payloadAtual.documento
+  const documentoOriginal = snapshot ? snapshot.documento : undefined
+  if (documentoAtual !== documentoOriginal) {
+    const ehCnpj = (documentoAtual || '').length === 14
+    const ehCpf = (documentoAtual || '').length === 11
+    diff.cnpj = ehCnpj ? documentoAtual : null
+    diff.cpf = ehCpf ? documentoAtual : null
   }
 
   return diff
@@ -449,7 +468,8 @@ function calcularDiff(payloadAtual) {
 // Mapeia erros de validação vindos do Laravel (em inglês) de volta pros campos do form (português)
 const MAPA_CAMPOS_API = {
   name: 'nome',
-  document: 'documento',
+  cnpj: 'documento',
+  cpf: 'documento',
   phone: 'telefone',
   email: 'email',
   gender: 'genero',
@@ -469,7 +489,7 @@ function aplicarErrosDaApi(e) {
       const chave = MAPA_CAMPOS_API[campo] || campo
       erros[chave] = Array.isArray(mensagens) ? mensagens[0] : mensagens
     })
-    if (apiErrors.document) {
+    if (apiErrors.cnpj || apiErrors.cpf) {
       erros.documento = 'Já existe uma pessoa cadastrada com este CPF ou CNPJ.'
     }
     erro('Confira os campos destacados antes de salvar.')
@@ -587,7 +607,8 @@ async function salvar() {
                 <p v-if="erros.documento" class="mt-1 text-xs text-destructive">
                   {{ erros.documento }}
                 </p>
-                <!-- 🟢 NOVO — status da consulta CPF/CNPJ (CPFHub / BrasilAPI) -->
+                <!-- 🟢 status da consulta CPF/CNPJ — é aqui que "encontrado" dispara o
+                     preenchimento automático de nome/nascimento (ver watch acima) -->
                 <p
                   v-else-if="documentoApi.status !== 'idle'"
                   class="mt-1 flex items-center gap-1 text-xs"
@@ -741,7 +762,7 @@ async function salvar() {
               >
                 {{ erros.email || 'Informe um e-mail válido.' }}
               </p>
-              <!-- 🟢 NOVO — status da verificação de entregabilidade (AbstractAPI) -->
+              <!-- 🟢 status da verificação de entregabilidade (AbstractAPI) -->
               <p
                 v-else-if="emailApi.status !== 'idle'"
                 class="mt-1 flex items-center gap-1 text-xs"
