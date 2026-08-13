@@ -211,15 +211,27 @@ function abrirEdicao(usuario) {
   modalAberto.value = true
 }
 
+// ---- CRIAÇÃO CORRIGIDA ----
 function usuarioCriado(usuario) {
-  usuarios.value.unshift({
-    ...usuario,
+  const novoUsuario = {
     id: Date.now(),
+    nome: usuario.nome || 'Novo Usuário',
+    email: usuario.email || '',
+    cargo: usuario.cargo || 'Vendedor',
+    status: usuario.status || 'ativo',
     cadastro: new Date().toISOString().slice(0, 10),
     ultimoAcesso: null,
-  })
+  }
+
+  usuarios.value.unshift(novoUsuario)
+
+  // Reseta filtros para garantir a exibição imediata
+  busca.value = ''
+  cargoFilter.value = 'todos'
+  statusFilter.value = 'todos'
   pagina.value = 1
-  sucesso('Usuário cadastrado', `${usuario.nome} foi adicionado ao sistema.`)
+
+  sucesso('Usuário cadastrado', `${novoUsuario.nome} foi adicionado ao sistema.`)
 }
 
 function usuarioAtualizado(usuario) {
@@ -238,17 +250,21 @@ function alternarStatus(usuario) {
   sucesso(`Status atualizado`, `Usuário ${usuario.nome} agora está ${usuario.status}.`)
 }
 
+// ---- EXCLUSÃO CORRIGIDA ----
 function confirmarExclusao() {
   if (!excluir.value || excluindo.value) return
 
   excluindo.value = true
-  try {
-    usuarios.value = usuarios.value.filter((u) => u.id !== excluir.value.id)
-    sucesso('Usuário excluído', 'O usuário foi removido do sistema.')
-    excluir.value = null
-  } finally {
-    excluindo.value = false
-  }
+
+  const idParaRemover = excluir.value.id
+  const nomeRemovido = excluir.value.nome
+
+  usuarios.value = usuarios.value.filter((u) => u.id !== idParaRemover)
+
+  sucesso('Usuário excluído', `${nomeRemovido} foi removido do sistema.`)
+
+  excluir.value = null
+  excluindo.value = false
 }
 </script>
 

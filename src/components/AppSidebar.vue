@@ -48,10 +48,10 @@ const secoes = [
       { titulo: 'Vendas (saídas)', url: '/vendas', icone: Receipt },
     ],
   },
-  {
-    label: 'Admin',
-    itens: [{ titulo: 'Usuários', url: '/usuarios', icone: Users }],
-  },
+  //{
+  //  label: 'Admin',
+  //  itens: [{ titulo: 'Usuários', url: '/usuarios', icone: Users }],
+  //},
   {
     label: 'Análise',
     itens: [
