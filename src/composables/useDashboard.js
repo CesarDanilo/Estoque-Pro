@@ -4,11 +4,18 @@ import api from '@/services/api'
 export function useDashboard() {
   const queryClient = useQueryClient()
 
+  // Helper interno para extrair arrays com segurança
+  const extractArray = (res) => {
+    if (Array.isArray(res)) return res
+    if (Array.isArray(res?.data)) return res.data
+    return []
+  }
+
   const summaryQuery = useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: async () => {
       const { data } = await api.get('/dashboard/summary')
-      return data
+      return data ?? {}
     },
   })
 
@@ -18,7 +25,7 @@ export function useDashboard() {
       const { data } = await api.get('/dashboard/top-products', {
         params: { days: 30, limit: 5 },
       })
-      return data
+      return extractArray(data)
     },
   })
 
@@ -28,7 +35,7 @@ export function useDashboard() {
       const { data } = await api.get('/dashboard/sales-by-group', {
         params: { days: 30 },
       })
-      return data
+      return extractArray(data)
     },
   })
 
@@ -38,7 +45,7 @@ export function useDashboard() {
       const { data } = await api.get('/dashboard/daily-sales', {
         params: { days: 15 },
       })
-      return data
+      return extractArray(data)
     },
   })
 
@@ -48,7 +55,7 @@ export function useDashboard() {
       const { data } = await api.get('/dashboard/without-sales', {
         params: { days: 30 },
       })
-      return data
+      return extractArray(data)
     },
   })
 
@@ -58,7 +65,7 @@ export function useDashboard() {
       const { data } = await api.get('/dashboard/low-stock', {
         params: { limit: 50 },
       })
-      return data
+      return extractArray(data)
     },
   })
 
@@ -69,7 +76,7 @@ export function useDashboard() {
         const { data } = await api.get('/dashboard/recent-activities', {
           params: { limit: 10 },
         })
-        return Array.isArray(data) ? data : (data?.data ?? [])
+        return extractArray(data)
       } catch (err) {
         console.error('Erro ao buscar atividades recentes:', err)
         return []
