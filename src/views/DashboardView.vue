@@ -4,6 +4,9 @@ import { RouterLink } from 'vue-router'
 import { Line, Bar } from 'vue-chartjs'
 import {
   ArrowUpRight,
+  BarChart3,
+  CheckCircle2,
+  Inbox,
   Package,
   Plus,
   Receipt,
@@ -44,7 +47,7 @@ function brl(valor) {
 }
 
 function dataBR(dataString) {
-  if (!dataString) return ''
+  if (!dataString) return '-'
   const data = new Date(dataString)
   return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(data)
 }
@@ -98,14 +101,17 @@ async function onVendaSalva() {
 }
 
 // --- Configuração dos Gráficos ---
+const pontosGraficoDiario = computed(() =>
+  Array.isArray(dailySalesQuery.data.value) ? dailySalesQuery.data.value : [],
+)
+
 const chartDataVendasCompras = computed(() => {
-  const pontos = Array.isArray(dailySalesQuery.data.value) ? dailySalesQuery.data.value : []
   return {
-    labels: pontos.map((d) => dataBR(d.data)),
+    labels: pontosGraficoDiario.value.map((d) => dataBR(d.data)),
     datasets: [
       {
         label: 'Vendas',
-        data: pontos.map((d) => Number(d.total || 0)),
+        data: pontosGraficoDiario.value.map((d) => Number(d.total || 0)),
         borderColor: '#00BC7D',
         backgroundColor: 'rgba(49, 202, 146, 0.15)',
         fill: true,
@@ -256,18 +262,14 @@ const chartOptionsGrupo = {
       />
     </div>
 
-    <Section
-      v-if="atencao.length > 0"
-      titulo="Precisa da sua atenção"
-      descricao="Produtos que podem faltar para as próximas vendas."
-    >
+    <Section titulo="Precisa da sua atenção" descricao="Produtos com risco de desabastecimento.">
       <template #acoes>
         <Button as-child variant="outline" size="sm">
           <RouterLink to="/compras/nova">Repor estoque</RouterLink>
         </Button>
       </template>
 
-      <ul class="max-h-72 divide-y divide-border overflow-y-auto">
+      <ul v-if="atencao.length > 0" class="max-h-72 divide-y divide-border overflow-y-auto">
         <li v-for="p in atencao" :key="p.id">
           <button
             type="button"
@@ -277,7 +279,7 @@ const chartOptionsGrupo = {
             <div class="min-w-0">
               <p class="truncate text-sm font-medium">{{ p.name || p.nome }}</p>
               <p class="truncate text-xs text-muted-foreground">
-                {{ p.sku }} · {{ p.group?.name || p.grupo || 'Sem grupo' }} · mínimo
+                {{ p.sku || 'Sem SKU' }} · {{ p.group?.name || p.grupo || 'Sem grupo' }} · mínimo
                 {{ p.min_stock_quantity || p.minimo || 0 }} un.
               </p>
             </div>
@@ -291,6 +293,15 @@ const chartOptionsGrupo = {
           </button>
         </li>
       </ul>
+
+      <div
+        v-else
+        class="flex flex-col items-center justify-center p-6 text-center text-muted-foreground"
+      >
+        <CheckCircle2 class="mb-2 size-8 text-emerald-500/80" />
+        <p class="text-sm font-medium text-foreground">Tudo certo com o estoque!</p>
+        <p class="text-xs">Nenhum produto em nível crítico no momento.</p>
+      </div>
     </Section>
 
     <div class="grid gap-4 xl:grid-cols-3">
@@ -299,16 +310,32 @@ const chartOptionsGrupo = {
         descricao="Movimentação das vendas no período."
         class="xl:col-span-2"
       >
-        <div class="h-64 p-3 md:h-72 md:p-4">
+        <div v-if="pontosGraficoDiario.length > 0" class="h-64 p-3 md:h-72 md:p-4">
           <Line :data="chartDataVendasCompras" :options="chartOptionsVendasCompras" />
+        </div>
+        <div
+          v-else
+          class="flex h-64 flex-col items-center justify-center p-4 text-center text-muted-foreground md:h-72"
+        >
+          <BarChart3 class="mb-2 size-8 text-muted-foreground/50" />
+          <p class="text-sm font-medium">Sem dados no período</p>
+          <p class="text-xs">Registre vendas para visualizar a evolução gráfica do negócio.</p>
         </div>
       </Section>
 
       <Section titulo="Vendas por grupo" descricao="Participação de cada categoria.">
-        <div class="max-h-72 overflow-y-auto p-3 md:p-4">
+        <div v-if="listaGrupos.length > 0" class="max-h-72 overflow-y-auto p-3 md:p-4">
           <div :style="{ height: alturaGraficoGrupo + 'px' }">
             <Bar :data="chartDataGrupo" :options="chartOptionsGrupo" />
           </div>
+        </div>
+        <div
+          v-else
+          class="flex h-64 flex-col items-center justify-center p-4 text-center text-muted-foreground md:h-72"
+        >
+          <BarChart3 class="mb-2 size-8 text-muted-foreground/50" />
+          <p class="text-sm font-medium">Nenhum grupo com vendas</p>
+          <p class="text-xs">O comparativo aparecerá assim que houverem registros.</p>
         </div>
       </Section>
     </div>
@@ -321,10 +348,7 @@ const chartOptionsGrupo = {
           </Button>
         </template>
 
-        <ul class="max-h-72 divide-y divide-border overflow-y-auto">
-          <li v-if="maisVendidos.length === 0" class="p-4 text-sm text-muted-foreground">
-            Nenhuma venda registrada nos últimos 30 dias.
-          </li>
+        <ul v-if="maisVendidos.length > 0" class="max-h-72 divide-y divide-border overflow-y-auto">
           <li v-for="(item, i) in maisVendidos" :key="item.product_id || i">
             <button
               type="button"
@@ -350,13 +374,19 @@ const chartOptionsGrupo = {
             </button>
           </li>
         </ul>
+
+        <div
+          v-else
+          class="flex flex-col items-center justify-center p-8 text-center text-muted-foreground"
+        >
+          <Inbox class="mb-2 size-8 text-muted-foreground/50" />
+          <p class="text-sm font-medium">Nenhum produto em destaque</p>
+          <p class="text-xs">Não foram encontradas vendas nos últimos 30 dias.</p>
+        </div>
       </Section>
 
       <Section titulo="Atividades recentes" descricao="Últimas movimentações de estoque.">
-        <ul class="max-h-72 divide-y divide-border overflow-y-auto">
-          <li v-if="atividades.length === 0" class="p-4 text-sm text-muted-foreground">
-            Nenhuma atividade recente encontrada.
-          </li>
+        <ul v-if="atividades.length > 0" class="max-h-72 divide-y divide-border overflow-y-auto">
           <li v-for="a in atividades" :key="`${a.tipo}-${a.id}`">
             <RouterLink
               :to="rotaAtividade(a)"
@@ -373,17 +403,27 @@ const chartOptionsGrupo = {
             </RouterLink>
           </li>
         </ul>
+
+        <div
+          v-else
+          class="flex flex-col items-center justify-center p-8 text-center text-muted-foreground"
+        >
+          <Inbox class="mb-2 size-8 text-muted-foreground/50" />
+          <p class="text-sm font-medium">Sem atividades recentes</p>
+          <p class="text-xs">Nenhuma venda ou movimentação recente cadastrada.</p>
+        </div>
       </Section>
     </div>
 
     <Section titulo="Produtos ativos sem vendas nos últimos 30 dias">
       <div class="flex flex-wrap gap-2 p-4 md:p-5">
-        <p v-if="semVendas.length === 0" class="text-sm text-muted-foreground">
-          Todos os produtos ativos tiveram vendas no período.
-        </p>
-        <StatusPill v-else v-for="p in semVendas" :key="p.id" tom="neutral">
+        <StatusPill v-if="semVendas.length > 0" v-for="p in semVendas" :key="p.id" tom="neutral">
           {{ p.name || p.nome }} · {{ p.stock_quantity ?? p.estoque ?? 0 }} un.
         </StatusPill>
+
+        <p v-else class="text-sm text-muted-foreground">
+          Todos os produtos ativos registraram vendas no período.
+        </p>
       </div>
     </Section>
   </div>
