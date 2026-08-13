@@ -1,12 +1,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import {
   ArrowUpRight,
-  ExternalLink,
   Loader2,
   Minus,
   PackagePlus,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -48,7 +47,6 @@ const props = defineProps({
 
 const emit = defineEmits(['update:open', 'created'])
 
-const router = useRouter()
 const { sucesso, erro } = useFeedback()
 
 // Composables para carregar dados do Backend/Store
@@ -79,6 +77,15 @@ const pagamento = ref('')
 // Controle dos modais aninhados
 const pessoaModalAberto = ref(false)
 const produtoModalAberto = ref(false)
+// Quando preenchido, o modal de produto abre em modo edição já com estes
+// dados (usado pelo botão "Repor estoque" de um item sem estoque). Quando
+// null, o modal abre em modo criação normal ("Novo produto").
+const produtoEmEdicao = ref(null)
+
+// Ao fechar o modal de produto, sempre volta pro estado de criação limpo
+watch(produtoModalAberto, (aberto) => {
+  if (!aberto) produtoEmEdicao.value = null
+})
 
 // Indica que estamos buscando os itens completos da venda no backend (modo edição)
 const carregandoItens = ref(false)
@@ -452,9 +459,16 @@ function aumentar(item) {
   item.qtd = Math.min(item.estoque, item.qtd + 1)
 }
 
-function irParaTelaProdutos() {
-  fechar()
-  router.push('/produtos')
+// Abre o mesmo modal de "Novo produto" só que em modo edição, já carregado
+// com o produto sem estoque. O usuário repõe o estoque sem sair da venda.
+function abrirProdutoParaReporEstoque(produto) {
+  produtoEmEdicao.value = produto
+  produtoModalAberto.value = true
+}
+
+function abrirNovoProduto() {
+  produtoEmEdicao.value = null
+  produtoModalAberto.value = true
 }
 
 // ---- Callbacks dos Modais de Cadastro ----
@@ -474,9 +488,12 @@ async function pessoaCriada(novaPessoa) {
   }
 }
 
+// Disparado tanto na criação quanto na edição de produto (evento "salvo").
+// Em ambos os casos: atualiza a lista de produtos e adiciona/incrementa o
+// item no carrinho — no caso da reposição de estoque, é exatamente isso que
+// o usuário queria ao clicar em "Repor estoque".
 async function produtoCriado(novoProduto) {
   const prodObj = novoProduto?.data || novoProduto
-  sucesso('Produto cadastrado', 'Produto adicionado ao carrinho.')
 
   if (typeof buscarProdutos === 'function') {
     await buscarProdutos()
@@ -656,7 +673,7 @@ async function salvar() {
                   variant="ghost"
                   size="sm"
                   class="h-7 cursor-pointer px-2 text-xs"
-                  @click="produtoModalAberto = true"
+                  @click="abrirNovoProduto"
                 >
                   <PackagePlus class="size-3.5" /> Novo produto
                 </Button>
@@ -733,11 +750,11 @@ async function salvar() {
                       variant="outline"
                       size="sm"
                       class="cursor-pointer text-xs"
-                      title="Ir para a página de Produtos para ajustar estoque"
-                      @click="irParaTelaProdutos"
+                      title="Editar este produto e repor o estoque"
+                      @click="abrirProdutoParaReporEstoque(p)"
                     >
-                      <ExternalLink class="size-3.5 mr-1" />
-                      Gerenciar
+                      <Pencil class="size-3.5 mr-1" />
+                      Repor estoque
                     </Button>
 
                     <Button
@@ -1018,9 +1035,10 @@ async function salvar() {
 
   <NewProduct
     v-model:open="produtoModalAberto"
-    :produto="null"
+    :produto="produtoEmEdicao"
     :ao-criar="criarProduto"
     @created="produtoCriado"
+    @updated="produtoCriado"
     @salvo="produtoCriado"
   />
 </template>
