@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/select'
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -82,7 +81,19 @@ const { data: fornecedoresData } = useQuery({
   queryFn: () => supplierService.getAll({ per_page: 100 }),
   staleTime: 1000 * 60 * 5,
 })
-const listaFornecedores = computed(() => fornecedoresData.value || [])
+
+// supplierService.getAll() devolve o objeto de paginação inteiro
+// ({ data: [...], current_page, last_page, total, ... }), não um array direto.
+// Antes o computed fazia `fornecedoresData.value || []`, e como o objeto de
+// paginação é sempre "truthy", o fallback `[]` nunca era usado — o resultado
+// virava o objeto inteiro, sem `.length`, e o card "Fornecedores cadastrados"
+// exibia "undefined". Aqui extraímos o array de dentro de `.data` corretamente,
+// com fallback pra array vazio só quando realmente não há nada.
+const listaFornecedores = computed(() => {
+  const dados = fornecedoresData.value
+  if (Array.isArray(dados)) return dados
+  return dados?.data || []
+})
 
 // ---- Compras (API) ----
 const filtros = computed(() => ({
