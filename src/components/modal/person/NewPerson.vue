@@ -1,6 +1,6 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { Loader2, Save } from 'lucide-vue-next'
+import { AlertTriangle, CheckCircle2, Loader2, Save } from 'lucide-vue-next'
 
 import {
   Dialog,
@@ -25,6 +25,8 @@ import { useDocumentMask } from '@/composables/useDocumentMask'
 import { usePhoneMask } from '@/composables/usePhoneMask'
 import { useCepMask } from '@/composables/useCepMask'
 import { useEmailValidation } from '@/composables/useEmailValidation'
+import { useDocumentApiValidation } from '@/composables/useDocumentApiValidation'
+import { useEmailApiValidation } from '@/composables/useEmailApiValidation'
 import { pessoaSchema } from '@/schemas/pessoaSchema'
 import { useFeedback } from '@/composables/useFeedBack'
 
@@ -54,6 +56,11 @@ const documento = useDocumentMask()
 const telefone = usePhoneMask()
 const cep = useCepMask()
 const email = useEmailValidation()
+
+// 🟢 NOVO — validação em tempo real via API (CPFHub / BrasilAPI / AbstractAPI).
+// Não bloqueia o envio: só informa/preenche automaticamente quando possível.
+const documentoApi = useDocumentApiValidation(() => documento.raw.value)
+const emailApi = useEmailApiValidation(() => email.value)
 
 const salvando = ref(false)
 const erros = reactive({})
@@ -179,6 +186,32 @@ watch(
       form.genero = 'other'
       form.nascimento = ''
       delete erros.nascimento
+    }
+  },
+)
+
+// 🟢 NOVO — assim que a consulta de CPF/CNPJ encontra um registro, preenche
+// automaticamente nome (e, se for CPF, nascimento/gênero) — mas só se o
+// usuário ainda não tiver digitado nada nesses campos, pra nunca sobrescrever
+// o que ele já preencheu manualmente.
+watch(
+  () => documentoApi.status,
+  (status) => {
+    if (status !== 'found') return
+
+    if (documentoApi.nome && !form.nome.trim()) {
+      form.nome = documentoApi.nome.slice(0, NOME_MAX)
+    }
+    if (documentoApi.tipo === 'CPF' && ehPessoaFisica.value) {
+      if (documentoApi.nascimento && !form.nascimento) {
+        form.nascimento = paraDataInput(documentoApi.nascimento)
+      }
+      if (documentoApi.genero && form.genero === 'other') {
+        const generoNormalizado = String(documentoApi.genero).toLowerCase()
+        if (generoNormalizado === 'male' || generoNormalizado === 'female') {
+          form.genero = generoNormalizado
+        }
+      }
     }
   },
 )
@@ -554,6 +587,40 @@ async function salvar() {
                 <p v-if="erros.documento" class="mt-1 text-xs text-destructive">
                   {{ erros.documento }}
                 </p>
+                <!-- 🟢 NOVO — status da consulta CPF/CNPJ (CPFHub / BrasilAPI) -->
+                <p
+                  v-else-if="documentoApi.status !== 'idle'"
+                  class="mt-1 flex items-center gap-1 text-xs"
+                  :class="{
+                    'text-muted-foreground': documentoApi.status === 'checking',
+                    'text-emerald-600 dark:text-emerald-400': documentoApi.status === 'found',
+                    'text-amber-600 dark:text-amber-400': documentoApi.status === 'not_found',
+                    'text-muted-foreground/70': documentoApi.status === 'error',
+                  }"
+                >
+                  <Loader2
+                    v-if="documentoApi.status === 'checking'"
+                    class="size-3 shrink-0 animate-spin"
+                  />
+                  <CheckCircle2
+                    v-else-if="documentoApi.status === 'found'"
+                    class="size-3 shrink-0"
+                  />
+                  <span v-if="documentoApi.status === 'checking'">
+                    Consultando {{ documentoApi.tipo }}…
+                  </span>
+                  <span v-else-if="documentoApi.status === 'found'" class="truncate">
+                    {{ documentoApi.tipo }} localizado{{
+                      documentoApi.nome ? `: ${documentoApi.nome}` : ''
+                    }}
+                  </span>
+                  <span v-else-if="documentoApi.status === 'not_found'">
+                    {{ documentoApi.tipo }} válido, ainda não cadastrado.
+                  </span>
+                  <span v-else-if="documentoApi.status === 'error'">
+                    Não foi possível consultar agora.
+                  </span>
+                </p>
                 <p v-else class="mt-1 text-xs text-muted-foreground">CPF ou CNPJ, automático.</p>
               </div>
 
@@ -673,6 +740,30 @@ async function salvar() {
                 class="mt-1 text-xs text-destructive"
               >
                 {{ erros.email || 'Informe um e-mail válido.' }}
+              </p>
+              <!-- 🟢 NOVO — status da verificação de entregabilidade (AbstractAPI) -->
+              <p
+                v-else-if="emailApi.status !== 'idle'"
+                class="mt-1 flex items-center gap-1 text-xs"
+                :class="{
+                  'text-muted-foreground': emailApi.status === 'checking',
+                  'text-emerald-600 dark:text-emerald-400': emailApi.status === 'deliverable',
+                  'text-amber-600 dark:text-amber-400': emailApi.status === 'undeliverable',
+                }"
+              >
+                <Loader2
+                  v-if="emailApi.status === 'checking'"
+                  class="size-3 shrink-0 animate-spin"
+                />
+                <CheckCircle2
+                  v-else-if="emailApi.status === 'deliverable'"
+                  class="size-3 shrink-0"
+                />
+                <AlertTriangle
+                  v-else-if="emailApi.status === 'undeliverable'"
+                  class="size-3 shrink-0"
+                />
+                {{ emailApi.status === 'checking' ? 'Verificando e-mail…' : emailApi.mensagem }}
               </p>
             </div>
 
