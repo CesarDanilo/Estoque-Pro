@@ -3,7 +3,7 @@ import axios from 'axios'
 const TOKEN_KEY = 'estoquepro:token'
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:34.235.157.46/api',
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -30,7 +30,7 @@ api.interceptors.response.use(
       }
     }
     return Promise.reject(error)
-  }
+  },
 )
 
 export default api
