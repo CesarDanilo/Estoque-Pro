@@ -28,12 +28,7 @@ import { useGroups } from '@/composables/useGroups'
 import { productService } from '@/services/productService'
 import { supplierService } from '@/services/supplierService'
 
-// Componentes dos Modais On-the-Fly
 import GroupModal from '@/components/modal/group/NewGroup.vue'
-// 🔴 TROCADO: não usamos mais o modal específico de fornecedor (NewSupplier.vue).
-// Agora chamamos o mesmo modal unificado de Pessoa usado no módulo de
-// clientes/pessoas e na página de Fornecedores, já pré-configurado como
-// fornecedor pessoa jurídica (ver props na tag <PersonModal> no template).
 import PersonModal from '@/components/modal/person/NewPerson.vue'
 
 const props = defineProps({
@@ -48,10 +43,8 @@ const emit = defineEmits(['update:open', 'created', 'updated', 'salvo'])
 const queryClient = useQueryClient()
 const { sucesso, erro } = useFeedback()
 
-// Instância do useGroups para carregar a lista de grupos da API
 const { groupsQuery } = useGroups()
 
-// Estados dos Modais On-the-Fly
 const modalGrupoAberto = ref(false)
 const modalFornecedorAberto = ref(false)
 
@@ -70,36 +63,49 @@ const form = reactive({
 
 const editando = computed(() => !!props.produto?.id)
 
-// Lista de grupos tratada vindos da Query
 const listaGrupos = computed(() => {
   const dados = groupsQuery?.data?.value
+
   if (Array.isArray(dados)) return dados
+
   return dados?.data || []
 })
 
-// Grupos ordenados em ordem alfabética (A-Z)
 const gruposOrdenados = computed(() => {
   return [...listaGrupos.value].sort((a, b) =>
-    (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }),
+    (a.name || '').localeCompare(b.name || '', 'pt-BR', {
+      sensitivity: 'base',
+    }),
   )
 })
 
 const carregandoGrupos = computed(() => groupsQuery?.isLoading?.value ?? false)
 
-// ---- Máscaras Sanitizadas ----
+// -----------------------------------------------------------------------------
+// MÁSCARAS
+// -----------------------------------------------------------------------------
+
 function criarMascaraMoeda(limiteDigitos = 8) {
   const raw = ref('')
 
   const formatted = computed(() => {
     if (!raw.value) return ''
+
     const numero = Number(raw.value) / 100
-    return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+    return numero.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
   })
 
-  const valorNumerico = computed(() => (raw.value ? Number(raw.value) / 100 : 0))
+  const valorNumerico = computed(() => {
+    return raw.value ? Number(raw.value) / 100 : 0
+  })
 
   function onInput(evento) {
     const digitos = evento.target.value.replace(/\D/g, '').slice(0, limiteDigitos)
+
     raw.value = digitos
     evento.target.value = formatted.value
   }
@@ -109,10 +115,17 @@ function criarMascaraMoeda(limiteDigitos = 8) {
       raw.value = ''
       return
     }
+
     raw.value = String(Math.round(Number(numero) * 100))
   }
 
-  return { raw, formatted, valorNumerico, onInput, setValue }
+  return {
+    raw,
+    formatted,
+    valorNumerico,
+    onInput,
+    setValue,
+  }
 }
 
 function criarMascaraInteiro(limiteDigitos = 6) {
@@ -120,7 +133,9 @@ function criarMascaraInteiro(limiteDigitos = 6) {
 
   function onInput(evento) {
     const digitos = evento.target.value.replace(/\D/g, '').slice(0, limiteDigitos)
+
     raw.value = digitos === '' ? '0' : digitos.replace(/^0+(?=\d)/, '')
+
     evento.target.value = raw.value
   }
 
@@ -128,7 +143,11 @@ function criarMascaraInteiro(limiteDigitos = 6) {
     raw.value = String(Math.max(0, Math.trunc(Number(numero) || 0)))
   }
 
-  return { raw, onInput, setValue }
+  return {
+    raw,
+    onInput,
+    setValue,
+  }
 }
 
 const custo = criarMascaraMoeda(8)
@@ -137,8 +156,15 @@ const estoque = criarMascaraInteiro(6)
 const minimo = criarMascaraInteiro(6)
 
 function brl(valor) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0)
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(valor || 0)
 }
+
+// -----------------------------------------------------------------------------
+// MODELS
+// -----------------------------------------------------------------------------
 
 const nomeModel = computed({
   get: () => form.name,
@@ -154,18 +180,27 @@ const descricaoModel = computed({
   },
 })
 
+// -----------------------------------------------------------------------------
+// MARGEM
+// -----------------------------------------------------------------------------
+
 const margem = computed(() => {
   const p = preco.valorNumerico.value
   const c = custo.valorNumerico.value
+
   return p > 0 && c > 0 ? ((p - c) / p) * 100 : null
 })
 
 const margemClasse = computed(() => {
   if (margem.value === null) return ''
+
   return margem.value >= 0 ? 'text-emerald-500' : 'text-red-500'
 })
 
-// ---- TanStack Query (Fornecedores) ----
+// -----------------------------------------------------------------------------
+// FORNECEDORES
+// -----------------------------------------------------------------------------
+
 const {
   data: fornecedoresData,
   isLoading: carregandoFornecedores,
@@ -178,58 +213,88 @@ const {
 })
 
 const listaFornecedores = computed(() => {
-  if (Array.isArray(fornecedoresData.value)) return fornecedoresData.value
+  if (Array.isArray(fornecedoresData.value)) {
+    return fornecedoresData.value
+  }
+
   return fornecedoresData.value?.data || []
 })
 
-// Fornecedores ordenados em ordem alfabética (A-Z)
 const fornecedoresOrdenados = computed(() => {
   return [...listaFornecedores.value].sort((a, b) =>
-    (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }),
+    (a.name || '').localeCompare(b.name || '', 'pt-BR', {
+      sensitivity: 'base',
+    }),
   )
 })
 
-// ---- Callbacks para seleção automática de Grupo e Fornecedor ----
-// 🟢 já existente: aguarda a lista de grupos ser atualizada (invalidate +
-// refetch) ANTES de setar form.group_id — é isso que garante que o grupo
-// recém-criado já apareça selecionado no Select assim que ele reaparece.
+// -----------------------------------------------------------------------------
+// CRIAÇÃO DE GRUPO
+// -----------------------------------------------------------------------------
+
 async function grupoCriado(grupo) {
-  await queryClient.invalidateQueries({ queryKey: ['groups'] })
-  if (groupsQuery?.refetch) await groupsQuery.refetch()
+  await queryClient.invalidateQueries({
+    queryKey: ['groups'],
+  })
+
+  if (groupsQuery?.refetch) {
+    await groupsQuery.refetch()
+  }
 
   const novoId = grupo?.id ?? grupo?.data?.id
+
   if (novoId) {
     form.group_id = String(novoId)
-    if (erros.group_id) delete erros.group_id
+
+    if (erros.group_id) {
+      delete erros.group_id
+    }
   }
 }
 
-// 🟢 mesmo princípio para o fornecedor: aguarda a lista de fornecedores
-// atualizar antes de selecioná-lo no Select. Continua funcionando do mesmo
-// jeito mesmo com o PersonModal no lugar do antigo NewSupplier.vue, pois o
-// evento 'created' emitido tem o mesmo formato (objeto com `id`).
+// -----------------------------------------------------------------------------
+// CRIAÇÃO DE FORNECEDOR
+// -----------------------------------------------------------------------------
+
 async function fornecedorCriado(fornecedor) {
-  await queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  await queryClient.invalidateQueries({
+    queryKey: ['suppliers'],
+  })
+
   await refetchFornecedores()
 
   const novoId = fornecedor?.id ?? fornecedor?.data?.id
+
   if (novoId) {
     form.supplier_id = String(novoId)
   }
 }
 
-// ---- TanStack Mutation (Criação e Edição do Produto) ----
+// -----------------------------------------------------------------------------
+// MUTATION DO PRODUTO
+// -----------------------------------------------------------------------------
+
 const saveMutation = useMutation({
   mutationFn: async (payload) => {
     if (editando.value) {
-      if (props.aoAtualizar) return await props.aoAtualizar(props.produto.id, payload)
+      if (props.aoAtualizar) {
+        return await props.aoAtualizar(props.produto.id, payload)
+      }
+
       return await productService.update(props.produto.id, payload)
     }
-    if (props.aoCriar) return await props.aoCriar(payload)
+
+    if (props.aoCriar) {
+      return await props.aoCriar(payload)
+    }
+
     return await productService.create(payload)
   },
+
   onSuccess: (res) => {
-    queryClient.invalidateQueries({ queryKey: ['products'] })
+    queryClient.invalidateQueries({
+      queryKey: ['products'],
+    })
 
     const produtoSalvo = res?.data || res
 
@@ -243,14 +308,18 @@ const saveMutation = useMutation({
     } else {
       emit('created', produtoSalvo)
     }
+
     emit('salvo', produtoSalvo)
 
     fechar()
   },
+
   onError: (err) => {
     const apiErrors = err.response?.data?.errors
+
     if (apiErrors) {
       Object.assign(erros, apiErrors)
+
       erro('Verifique os campos destacados.')
     } else {
       erro('Erro ao salvar', err.response?.data?.message || 'Não foi possível salvar o produto.')
@@ -258,44 +327,71 @@ const saveMutation = useMutation({
   },
 })
 
-// Limpeza de erros dinâmicos
+// -----------------------------------------------------------------------------
+// WATCHERS
+// -----------------------------------------------------------------------------
+
 watch(
   () => form.name,
   (v) => {
-    if (erros.name && v.trim().length >= 3) delete erros.name
+    if (erros.name && v.trim().length >= 3) {
+      delete erros.name
+    }
   },
 )
+
 watch(
   () => form.group_id,
   (v) => {
-    if (erros.group_id && v) delete erros.group_id
+    if (erros.group_id && v) {
+      delete erros.group_id
+    }
   },
 )
+
 watch(preco.raw, (v) => {
-  if (erros.sale_price && Number(v) > 0) delete erros.sale_price
+  if (erros.sale_price && Number(v) > 0) {
+    delete erros.sale_price
+  }
 })
 
 watch(
   () => props.open,
   (aberto) => {
     if (!aberto) return
+
     preencherFormulario()
   },
 )
 
+// -----------------------------------------------------------------------------
+// PREENCHER FORMULÁRIO
+// -----------------------------------------------------------------------------
+
 function preencherFormulario() {
   const p = props.produto
-  Object.keys(erros).forEach((chave) => delete erros[chave])
+
+  Object.keys(erros).forEach((chave) => {
+    delete erros[chave]
+  })
 
   if (p) {
     form.name = p.name ?? p.nome ?? ''
+
     form.group_id = p.group_id ? String(p.group_id) : ''
+
     form.supplier_id = p.supplier_id ? String(p.supplier_id) : 'none'
+
     form.active = typeof p.active !== 'undefined' ? Boolean(p.active) : true
+
     form.description = p.description ?? ''
+
     custo.setValue(p.cost_price ?? p.custo)
+
     preco.setValue(p.sale_price ?? p.preco)
+
     estoque.setValue(p.stock_quantity ?? p.estoque)
+
     minimo.setValue(p.min_stock_quantity ?? p.minimo)
   } else {
     form.name = ''
@@ -303,6 +399,7 @@ function preencherFormulario() {
     form.supplier_id = 'none'
     form.active = true
     form.description = ''
+
     custo.setValue('')
     preco.setValue('')
     estoque.setValue(0)
@@ -310,42 +407,77 @@ function preencherFormulario() {
   }
 }
 
+// -----------------------------------------------------------------------------
+// FECHAR
+// -----------------------------------------------------------------------------
+
 function fechar() {
   emit('update:open', false)
 }
 
-function validar() {
-  Object.keys(erros).forEach((chave) => delete erros[chave])
+// -----------------------------------------------------------------------------
+// VALIDAÇÃO
+// -----------------------------------------------------------------------------
 
-  if (form.name.trim().length < 3) erros.name = 'Informe o nome do produto (mínimo 3 caracteres).'
-  if (!form.group_id) erros.group_id = 'Selecione um grupo.'
-  if (!(preco.valorNumerico.value > 0)) erros.sale_price = 'Informe o preço de venda.'
+function validar() {
+  Object.keys(erros).forEach((chave) => {
+    delete erros[chave]
+  })
+
+  if (form.name.trim().length < 3) {
+    erros.name = 'Informe o nome do produto (mínimo 3 caracteres).'
+  }
+
+  if (!form.group_id) {
+    erros.group_id = 'Selecione um grupo.'
+  }
+
+  if (!(preco.valorNumerico.value > 0)) {
+    erros.sale_price = 'Informe o preço de venda.'
+  }
 
   return Object.keys(erros).length === 0
 }
+
+// -----------------------------------------------------------------------------
+// SALVAR
+// -----------------------------------------------------------------------------
 
 function salvar() {
   if (saveMutation.isPending.value) return
 
   if (!validar()) {
     erro('Confira os campos destacados antes de salvar.')
+
     return
   }
 
   const payload = {
     name: form.name.trim(),
+
     group_id: form.group_id,
+
     supplier_id: form.supplier_id === 'none' || !form.supplier_id ? null : form.supplier_id,
+
     active: form.active,
+
     description: form.description ? form.description.trim() : null,
+
     cost_price: custo.valorNumerico.value,
+
     sale_price: preco.valorNumerico.value,
+
     stock_quantity: Number(estoque.raw.value),
+
     min_stock_quantity: Number(minimo.raw.value),
   }
 
   saveMutation.mutate(payload)
 }
+
+// -----------------------------------------------------------------------------
+// PESSOA → FORNECEDOR
+// -----------------------------------------------------------------------------
 
 const CAMPO_PESSOA_PARA_FORNECEDOR = {
   categoria: 'category',
@@ -371,10 +503,13 @@ const CAMPO_PESSOA_PARA_FORNECEDOR = {
 
 function traduzirPayloadDePessoaParaFornecedor(payload) {
   const traduzido = {}
+
   for (const [campoFront, valor] of Object.entries(payload)) {
     const chaveApi = CAMPO_PESSOA_PARA_FORNECEDOR[campoFront] ?? campoFront
+
     traduzido[chaveApi] = valor
   }
+
   return traduzido
 }
 
@@ -394,12 +529,16 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
         <DialogTitle class="text-xl font-semibold tracking-tight">
           {{ editando ? 'Editar produto' : 'Novo produto' }}
         </DialogTitle>
+
         <DialogDescription class="text-sm text-muted-foreground">
-          Os campos marcados com <span class="text-destructive">*</span> são obrigatórios.
+          Os campos marcados com
+          <span class="text-destructive">*</span>
+          são obrigatórios.
         </DialogDescription>
       </DialogHeader>
 
       <form class="space-y-7 pt-1" @submit.prevent="salvar">
+        <!-- IDENTIFICAÇÃO -->
         <section class="space-y-4">
           <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Identificação
@@ -408,8 +547,10 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
           <div class="grid grid-cols-1 gap-x-6 gap-y-4">
             <div>
               <label for="produto-nome" class="mb-1.5 block text-sm font-medium text-foreground">
-                Nome do produto <span class="text-destructive">*</span>
+                Nome do produto
+                <span class="text-destructive">*</span>
               </label>
+
               <div class="relative">
                 <Input
                   id="produto-nome"
@@ -419,6 +560,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                   class="h-10 cursor-text pr-14"
                   :aria-invalid="!!erros.name"
                 />
+
                 <span
                   class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[11px] font-medium tabular-nums transition-colors"
                   :class="
@@ -428,16 +570,19 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                   {{ form.name.length }}/{{ NOME_MAX }}
                 </span>
               </div>
+
               <p v-if="erros.name" class="mt-1 text-xs text-destructive">
                 {{ Array.isArray(erros.name) ? erros.name[0] : erros.name }}
               </p>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            <div class="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
               <div>
                 <label for="produto-grupo" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Grupo <span class="text-destructive">*</span>
+                  Grupo
+                  <span class="text-destructive">*</span>
                 </label>
+
                 <div class="flex gap-2">
                   <Select v-model="form.group_id">
                     <SelectTrigger
@@ -449,6 +594,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                         :placeholder="carregandoGrupos ? 'Carregando…' : 'Selecione um grupo'"
                       />
                     </SelectTrigger>
+
                     <SelectContent>
                       <SelectItem
                         v-for="g in gruposOrdenados"
@@ -460,6 +606,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                       </SelectItem>
                     </SelectContent>
                   </Select>
+
                   <Button
                     type="button"
                     variant="outline"
@@ -471,6 +618,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                     <Plus class="size-4" />
                   </Button>
                 </div>
+
                 <p v-if="erros.group_id" class="mt-1 text-xs text-destructive">
                   {{ Array.isArray(erros.group_id) ? erros.group_id[0] : erros.group_id }}
                 </p>
@@ -483,23 +631,26 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                 >
                   Fornecedor (Opcional)
                 </label>
-                <div class="flex gap-2 min-w-0 w-full">
+
+                <div class="flex min-w-0 w-full gap-2">
                   <Select v-model="form.supplier_id">
                     <SelectTrigger
                       id="produto-fornecedor"
                       class="!h-10 w-full max-w-[280px] min-w-0 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
                     >
                       <SelectValue
-                        class="truncate block min-w-0"
+                        class="block min-w-0 truncate"
                         :placeholder="
                           carregandoFornecedores ? 'Carregando…' : 'Sem fornecedor (Avulso)'
                         "
                       />
                     </SelectTrigger>
+
                     <SelectContent class="max-w-[320px]">
                       <SelectItem value="none" class="cursor-pointer truncate">
                         Sem fornecedor (Avulso)
                       </SelectItem>
+
                       <SelectItem
                         v-for="s in fornecedoresOrdenados"
                         :key="s.id"
@@ -510,6 +661,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                       </SelectItem>
                     </SelectContent>
                   </Select>
+
                   <Button
                     type="button"
                     variant="outline"
@@ -526,22 +678,25 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
           </div>
         </section>
 
+        <!-- PREÇOS E ESTOQUE -->
         <section class="space-y-4 border-t border-border pt-6">
           <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Preços e estoque
           </h3>
 
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4">
+          <div class="grid grid-cols-2 gap-x-6 gap-y-4 md:grid-cols-4">
             <div>
               <label for="produto-custo" class="mb-1.5 block text-sm font-medium text-foreground">
                 Custo de compra
               </label>
+
               <div class="relative">
                 <span
                   class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
                 >
                   R$
                 </span>
+
                 <input
                   id="produto-custo"
                   :value="custo.formatted.value"
@@ -556,14 +711,17 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
 
             <div>
               <label for="produto-preco" class="mb-1.5 block text-sm font-medium text-foreground">
-                Preço de venda <span class="text-destructive">*</span>
+                Preço de venda
+                <span class="text-destructive">*</span>
               </label>
+
               <div class="relative">
                 <span
                   class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
                 >
                   R$
                 </span>
+
                 <input
                   id="produto-preco"
                   :value="preco.formatted.value"
@@ -571,11 +729,14 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                   placeholder="0,00"
                   class="h-10 w-full cursor-text rounded-md border border-input bg-transparent py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                   :aria-invalid="!!erros.sale_price"
-                  :class="{ 'border-destructive': erros.sale_price }"
+                  :class="{
+                    'border-destructive': erros.sale_price,
+                  }"
                   @input="preco.onInput"
                   @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                 />
               </div>
+
               <p v-if="erros.sale_price" class="mt-1 text-xs text-destructive">
                 {{ Array.isArray(erros.sale_price) ? erros.sale_price[0] : erros.sale_price }}
               </p>
@@ -585,6 +746,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
               <label for="produto-estoque" class="mb-1.5 block text-sm font-medium text-foreground">
                 Estoque inicial
               </label>
+
               <input
                 id="produto-estoque"
                 :value="estoque.raw.value"
@@ -600,6 +762,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
               <label for="produto-minimo" class="mb-1.5 block text-sm font-medium text-foreground">
                 Estoque mínimo
               </label>
+
               <input
                 id="produto-minimo"
                 :value="minimo.raw.value"
@@ -613,16 +776,20 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
 
             <div
               v-if="margem !== null"
-              class="col-span-2 md:col-span-4 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm"
+              class="col-span-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm md:col-span-4"
             >
               Margem estimada:
-              <span class="font-semibold" :class="margemClasse">{{ margem.toFixed(1) }}%</span>
-              · lucro de {{ brl(preco.valorNumerico.value - custo.valorNumerico.value) }} por
-              unidade
+
+              <span class="font-semibold" :class="margemClasse"> {{ margem.toFixed(1) }}% </span>
+
+              · lucro de
+              {{ brl(preco.valorNumerico.value - custo.valorNumerico.value) }}
+              por unidade
             </div>
           </div>
         </section>
 
+        <!-- DESCRIÇÃO E SITUAÇÃO -->
         <section class="space-y-4 border-t border-border pt-6">
           <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
             Descrição e situação
@@ -632,6 +799,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
             <label for="produto-descricao" class="mb-1.5 block text-sm font-medium text-foreground">
               Descrição (opcional)
             </label>
+
             <div class="relative">
               <Textarea
                 id="produto-descricao"
@@ -641,6 +809,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
                 rows="3"
                 :maxlength="DESCRICAO_MAX"
               />
+
               <span
                 class="pointer-events-none absolute bottom-2 right-3 select-none text-[11px] font-medium tabular-nums transition-colors"
                 :class="
@@ -654,17 +823,25 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
             </div>
           </div>
 
+          <!--
+            O status "Produto ativo" aparece SOMENTE durante a edição.
+            Na criação, o produto será criado com active: true,
+            mas o usuário não precisa visualizar esse controle.
+          -->
           <div
+            v-if="editando"
             class="flex items-center justify-between gap-3 rounded-md border border-input px-4 py-3"
           >
             <div class="space-y-0.5">
-              <label for="produto-ativo" class="text-sm font-medium text-foreground"
-                >Produto ativo</label
-              >
+              <label for="produto-ativo" class="text-sm font-medium text-foreground">
+                Produto ativo
+              </label>
+
               <p class="text-xs text-muted-foreground">
                 Produtos inativos ficam ocultos na PDV/vendas.
               </p>
             </div>
+
             <Switch
               id="produto-ativo"
               v-model="form.active"
@@ -673,6 +850,7 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
           </div>
         </section>
 
+        <!-- FOOTER -->
         <DialogFooter class="pt-3">
           <Button
             type="button"
@@ -683,13 +861,16 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
           >
             Cancelar
           </Button>
+
           <Button
             type="submit"
             :disabled="saveMutation.isPending.value"
             class="cursor-pointer bg-emerald-500 font-medium text-black hover:bg-emerald-600 disabled:opacity-50"
           >
-            <Loader2 v-if="saveMutation.isPending.value" class="size-4 animate-spin mr-1.5" />
-            <Save v-else class="size-4 mr-1.5" />
+            <Loader2 v-if="saveMutation.isPending.value" class="mr-1.5 size-4 animate-spin" />
+
+            <Save v-else class="mr-1.5 size-4" />
+
             {{
               saveMutation.isPending.value
                 ? 'Salvando…'
@@ -703,12 +884,10 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
     </DialogContent>
   </Dialog>
 
+  <!-- MODAL DE GRUPO -->
   <GroupModal v-model:open="modalGrupoAberto" @created="grupoCriado" @salvo="grupoCriado" />
 
-  <!-- 🔴 TROCADO: mesmo padrão da página de Fornecedores — modal unificado
-       de Pessoa, já nascendo como categoria "Fornecedor" (o que trava o
-       Tipo automaticamente em "Pessoa jurídica" dentro do próprio
-       NewPerson.vue). Sem prop `pessoa`, então sempre abre em modo criação. -->
+  <!-- MODAL DE FORNECEDOR -->
   <PersonModal
     v-model:open="modalFornecedorAberto"
     :ao-criar="criarFornecedorViaPersonModal"
