@@ -1415,6 +1415,7 @@ async function salvar() {
         </section>
 
         <section
+          v-if="modoEdicao"
           class="flex items-center justify-between gap-3 rounded-md border border-input px-3 py-2"
         >
           <div>
