@@ -170,10 +170,37 @@ function alternarStatusGrupo(grupo) {
   )
 }
 
+// ---- Bloqueio de exclusão para grupos com produtos vinculados ----
+function possuiProdutosVinculados(grupo) {
+  return Number(grupo?.produtos || 0) > 0
+}
+
+function tentarExcluir(grupo) {
+  if (possuiProdutosVinculados(grupo)) {
+    erro(
+      'Grupo possui produtos vinculados',
+      `O grupo "${grupo.name}" tem ${grupo.produtos} produto(s) associado(s). Reclassifique ou remova esses produtos antes de excluir o grupo.`,
+    )
+    return
+  }
+  grupoParaExcluir.value = grupo
+}
+
 function confirmarExclusao() {
   if (!grupoParaExcluir.value) return
 
   const grupo = grupoParaExcluir.value
+
+  // Guarda de segurança: nunca deve chegar aqui com produtos vinculados,
+  // mas evita exclusão caso os dados tenham mudado entre a abertura do modal e a confirmação.
+  if (possuiProdutosVinculados(grupo)) {
+    erro(
+      'Grupo possui produtos vinculados',
+      `O grupo "${grupo.name}" tem ${grupo.produtos} produto(s) associado(s) e não pode ser excluído.`,
+    )
+    grupoParaExcluir.value = null
+    return
+  }
 
   deleteMutation.mutate(grupo.id, {
     onSuccess: () => {
@@ -350,8 +377,17 @@ function confirmarExclusao() {
                       {{ g.active ? 'Inativar' : 'Ativar' }}
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      class="cursor-pointer text-destructive"
-                      @click="grupoParaExcluir = g"
+                      :class="[
+                        possuiProdutosVinculados(g)
+                          ? 'cursor-not-allowed opacity-50'
+                          : 'cursor-pointer text-destructive',
+                      ]"
+                      :title="
+                        possuiProdutosVinculados(g)
+                          ? 'Não é possível excluir: grupo possui produtos vinculados'
+                          : undefined
+                      "
+                      @click="tentarExcluir(g)"
                     >
                       <Trash2 class="size-4" /> Excluir
                     </DropdownMenuItem>
@@ -455,8 +491,17 @@ function confirmarExclusao() {
                           {{ g.active ? 'Inativar' : 'Ativar' }}
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          class="cursor-pointer text-destructive"
-                          @click="grupoParaExcluir = g"
+                          :class="[
+                            possuiProdutosVinculados(g)
+                              ? 'cursor-not-allowed opacity-50'
+                              : 'cursor-pointer text-destructive',
+                          ]"
+                          :title="
+                            possuiProdutosVinculados(g)
+                              ? 'Não é possível excluir: grupo possui produtos vinculados'
+                              : undefined
+                          "
+                          @click="tentarExcluir(g)"
                         >
                           <Trash2 class="size-4" /> Excluir
                         </DropdownMenuItem>
@@ -506,8 +551,8 @@ function confirmarExclusao() {
         <AlertDialogHeader>
           <AlertDialogTitle>Excluir {{ grupoParaExcluir?.name }}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Essa ação não poderá ser desfeita. Os produtos associados a este grupo precisarão ser
-            reclassificados.
+            Essa ação não poderá ser desfeita. Essa exclusão só é permitida para grupos sem produtos
+            vinculados.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
