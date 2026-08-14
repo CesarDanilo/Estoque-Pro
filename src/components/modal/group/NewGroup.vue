@@ -23,7 +23,10 @@ const props = defineProps({
   grupo: { type: Object, default: null },
 })
 
-const emit = defineEmits(['update:open'])
+// 🔴 CORRIGIDO: faltavam 'created' e 'updated' — era por isso que o
+// NewProduct.vue (e qualquer outro lugar que use este modal) nunca recebia
+// aviso nenhum de que um grupo tinha sido criado/atualizado.
+const emit = defineEmits(['update:open', 'created', 'updated'])
 
 const { createMutation, updateMutation } = useGroups()
 const { sucesso, erro } = useFeedback()
@@ -110,8 +113,13 @@ function salvar() {
     updateMutation.mutate(
       { id: props.grupo.id, payload },
       {
-        onSuccess: () => {
+        // 🔴 CORRIGIDO: agora recebe o retorno da mutation (res) e emite
+        // 'updated' com o grupo atualizado, desembrulhando `res.data` caso
+        // a API retorne no formato { data: {...} } (padrão Laravel Resource).
+        onSuccess: (res) => {
+          const grupoSalvo = res?.data ?? res
           sucesso('Grupo atualizado', 'Grupo atualizado com sucesso.')
+          emit('updated', grupoSalvo)
           fechar()
         },
         onError: (err) => {
@@ -121,8 +129,12 @@ function salvar() {
     )
   } else {
     createMutation.mutate(payload, {
-      onSuccess: () => {
+      // 🔴 CORRIGIDO: mesma coisa aqui — é ESTE emit que faltava e que
+      // fazia o grupo novo nunca chegar até o NewProduct.vue.
+      onSuccess: (res) => {
+        const grupoSalvo = res?.data ?? res
         sucesso('Grupo cadastrado', 'Grupo cadastrado com sucesso.')
+        emit('created', grupoSalvo)
         fechar()
       },
       onError: (err) => {

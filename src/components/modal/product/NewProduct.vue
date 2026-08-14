@@ -30,7 +30,11 @@ import { supplierService } from '@/services/supplierService'
 
 // Componentes dos Modais On-the-Fly
 import GroupModal from '@/components/modal/group/NewGroup.vue'
-import SupplierModal from '@/components/modal/supplier/NewSupplier.vue'
+// 🔴 TROCADO: não usamos mais o modal específico de fornecedor (NewSupplier.vue).
+// Agora chamamos o mesmo modal unificado de Pessoa usado no módulo de
+// clientes/pessoas e na página de Fornecedores, já pré-configurado como
+// fornecedor pessoa jurídica (ver props na tag <PersonModal> no template).
+import PersonModal from '@/components/modal/person/NewPerson.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -52,14 +56,12 @@ const modalGrupoAberto = ref(false)
 const modalFornecedorAberto = ref(false)
 
 const NOME_MAX = 120
-const SKU_MAX = 30
 const DESCRICAO_MAX = 500
 
 const erros = reactive({})
 
 const form = reactive({
   name: '',
-  sku: '',
   group_id: '',
   supplier_id: 'none',
   active: true,
@@ -138,16 +140,6 @@ function brl(valor) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0)
 }
 
-const skuModel = computed({
-  get: () => form.sku,
-  set: (v) => {
-    form.sku = (v ?? '')
-      .toUpperCase()
-      .replace(/[^A-Z0-9\-_]/g, '')
-      .slice(0, SKU_MAX)
-  },
-})
-
 const nomeModel = computed({
   get: () => form.name,
   set: (v) => {
@@ -198,6 +190,9 @@ const fornecedoresOrdenados = computed(() => {
 })
 
 // ---- Callbacks para seleção automática de Grupo e Fornecedor ----
+// 🟢 já existente: aguarda a lista de grupos ser atualizada (invalidate +
+// refetch) ANTES de setar form.group_id — é isso que garante que o grupo
+// recém-criado já apareça selecionado no Select assim que ele reaparece.
 async function grupoCriado(grupo) {
   await queryClient.invalidateQueries({ queryKey: ['groups'] })
   if (groupsQuery?.refetch) await groupsQuery.refetch()
@@ -209,6 +204,10 @@ async function grupoCriado(grupo) {
   }
 }
 
+// 🟢 mesmo princípio para o fornecedor: aguarda a lista de fornecedores
+// atualizar antes de selecioná-lo no Select. Continua funcionando do mesmo
+// jeito mesmo com o PersonModal no lugar do antigo NewSupplier.vue, pois o
+// evento 'created' emitido tem o mesmo formato (objeto com `id`).
 async function fornecedorCriado(fornecedor) {
   await queryClient.invalidateQueries({ queryKey: ['suppliers'] })
   await refetchFornecedores()
@@ -266,9 +265,6 @@ watch(
     if (erros.name && v.trim().length >= 3) delete erros.name
   },
 )
-watch(skuModel, (v) => {
-  if (erros.sku && v.trim()) delete erros.sku
-})
 watch(
   () => form.group_id,
   (v) => {
@@ -293,7 +289,6 @@ function preencherFormulario() {
 
   if (p) {
     form.name = p.name ?? p.nome ?? ''
-    form.sku = p.sku ?? ''
     form.group_id = p.group_id ? String(p.group_id) : ''
     form.supplier_id = p.supplier_id ? String(p.supplier_id) : 'none'
     form.active = typeof p.active !== 'undefined' ? Boolean(p.active) : true
@@ -304,7 +299,6 @@ function preencherFormulario() {
     minimo.setValue(p.min_stock_quantity ?? p.minimo)
   } else {
     form.name = ''
-    form.sku = ''
     form.group_id = ''
     form.supplier_id = 'none'
     form.active = true
@@ -324,7 +318,6 @@ function validar() {
   Object.keys(erros).forEach((chave) => delete erros[chave])
 
   if (form.name.trim().length < 3) erros.name = 'Informe o nome do produto (mínimo 3 caracteres).'
-  if (!form.sku.trim()) erros.sku = 'Informe um código SKU válido.'
   if (!form.group_id) erros.group_id = 'Selecione um grupo.'
   if (!(preco.valorNumerico.value > 0)) erros.sale_price = 'Informe o preço de venda.'
 
@@ -341,7 +334,6 @@ function salvar() {
 
   const payload = {
     name: form.name.trim(),
-    sku: form.sku.trim(),
     group_id: form.group_id,
     supplier_id: form.supplier_id === 'none' || !form.supplier_id ? null : form.supplier_id,
     active: form.active,
@@ -353,6 +345,45 @@ function salvar() {
   }
 
   saveMutation.mutate(payload)
+}
+
+const CAMPO_PESSOA_PARA_FORNECEDOR = {
+  categoria: 'category',
+  type: 'type',
+  nome: 'name',
+  documento: 'document',
+  nomeFantasia: 'trade_name',
+  inscricaoEstadual: 'state_registration',
+  pessoaContato: 'contact_person',
+  genero: 'gender',
+  nascimento: 'birth_date',
+  telefone: 'phone',
+  email: 'email',
+  cep: 'zip_code',
+  logradouro: 'street',
+  numero: 'number',
+  complemento: 'complement',
+  bairro: 'neighborhood',
+  cidade: 'city',
+  uf: 'state',
+  ativo: 'active',
+}
+
+function traduzirPayloadDePessoaParaFornecedor(payload) {
+  const traduzido = {}
+  for (const [campoFront, valor] of Object.entries(payload)) {
+    const chaveApi = CAMPO_PESSOA_PARA_FORNECEDOR[campoFront] ?? campoFront
+    traduzido[chaveApi] = valor
+  }
+  return traduzido
+}
+
+async function criarFornecedorViaPersonModal(payload) {
+  return supplierService.create(traduzirPayloadDePessoaParaFornecedor(payload))
+}
+
+async function atualizarFornecedorViaPersonModal(id, payload) {
+  return supplierService.update(id, traduzirPayloadDePessoaParaFornecedor(payload))
 }
 </script>
 
@@ -402,37 +433,7 @@ function salvar() {
               </p>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
-              <div>
-                <label for="produto-sku" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Código (SKU) <span class="text-destructive">*</span>
-                </label>
-                <div class="relative">
-                  <Input
-                    id="produto-sku"
-                    v-model="skuModel"
-                    placeholder="BEB-0001"
-                    :maxlength="SKU_MAX"
-                    class="h-10 cursor-text pr-12 uppercase font-mono"
-                    :aria-invalid="!!erros.sku"
-                  />
-                  <span
-                    class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
-                    :class="
-                      form.sku.length >= SKU_MAX ? 'text-red-500' : 'text-muted-foreground/40'
-                    "
-                  >
-                    {{ form.sku.length }}/{{ SKU_MAX }}
-                  </span>
-                </div>
-                <p v-if="erros.sku" class="mt-1 text-xs text-destructive">
-                  {{ Array.isArray(erros.sku) ? erros.sku[0] : erros.sku }}
-                </p>
-                <p v-else class="mt-1 text-xs text-muted-foreground">
-                  Usado na busca rápida de vendas.
-                </p>
-              </div>
-
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
               <div>
                 <label for="produto-grupo" class="mb-1.5 block text-sm font-medium text-foreground">
                   Grupo <span class="text-destructive">*</span>
@@ -703,9 +704,19 @@ function salvar() {
   </Dialog>
 
   <GroupModal v-model:open="modalGrupoAberto" @created="grupoCriado" @salvo="grupoCriado" />
-  <SupplierModal
+
+  <!-- 🔴 TROCADO: mesmo padrão da página de Fornecedores — modal unificado
+       de Pessoa, já nascendo como categoria "Fornecedor" (o que trava o
+       Tipo automaticamente em "Pessoa jurídica" dentro do próprio
+       NewPerson.vue). Sem prop `pessoa`, então sempre abre em modo criação. -->
+  <PersonModal
     v-model:open="modalFornecedorAberto"
+    :ao-criar="criarFornecedorViaPersonModal"
+    :ao-atualizar="atualizarFornecedorViaPersonModal"
+    :ao-atualizar-parcial="atualizarFornecedorViaPersonModal"
+    categoria-padrao="supplier"
+    :categoria-fixa="true"
+    titulo-criacao="Novo fornecedor"
     @created="fornecedorCriado"
-    @salvo="fornecedorCriado"
   />
 </template>
