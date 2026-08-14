@@ -41,33 +41,53 @@ export function useDocumentApiValidation(getDigits) {
     resetDados()
 
     const rota = tipo === 'CPF' ? '/document/cpf/validate' : '/document/cnpj/validate'
+    const payloadKey = tipo === 'CPF' ? 'cpf' : 'cnpj'
+    const payload = { [payloadKey]: digitos }
+
+    // 🟢 DEBUG: mostra exatamente o que está sendo enviado
+    console.log(`[useDocumentApiValidation] → POST ${rota}`, payload)
 
     try {
-      const { data } = await api.post(rota, { document: digitos })
+      const response = await api.post(rota, payload)
 
       if (idAtual !== requestId) return
 
-      if (!data.valid) {
-        state.status = 'error'
-        return
-      }
+      // 🟢 DEBUG: mostra a resposta CRUA completa, exatamente como o axios recebeu
+      console.log(`[useDocumentApiValidation] ← resposta crua (${tipo}):`, response.data)
 
-      if (!data.found) {
+      const resultado = response.data?.data ?? response.data ?? {}
+
+      // 🟢 DEBUG: mostra o objeto já "desembrulhado" que o composable vai usar
+      console.log(`[useDocumentApiValidation] ← resultado extraído (${tipo}):`, resultado)
+
+      if (!resultado.exists) {
         state.status = 'not_found'
+        console.log(`[useDocumentApiValidation] status => not_found`)
         return
       }
 
       state.status = 'found'
-      state.nome = data.name || null
-      state.nascimento = data.birth_date || null
-      state.genero = data.gender || null
-      state.fantasia = data.trade_name || null
-      state.cidade = data.city || null
-      state.uf = data.state || null
-      state.cep = data.zip_code || null
-      state.endereco = data.address || null
+      state.nome = resultado.name || null
+      state.nascimento = resultado.birth_date || null
+      state.genero = resultado.gender || null
+      state.fantasia = resultado.trade_name || null
+      state.cidade = resultado.city || null
+      state.uf = resultado.state || null
+      state.cep = resultado.zip_code || null
+      state.endereco = resultado.address || null
+
+      // 🟢 DEBUG: mostra o state final depois de preenchido
+      console.log(`[useDocumentApiValidation] status => found`, { ...state })
     } catch (e) {
       if (idAtual !== requestId) return
+
+      // 🟢 DEBUG: mostra o erro completo (status HTTP + corpo da resposta de erro)
+      console.log(`[useDocumentApiValidation] ✖ erro na consulta (${tipo}):`, {
+        status: e.response?.status,
+        data: e.response?.data,
+        erro: e,
+      })
+
       state.status = 'error'
     }
   }
