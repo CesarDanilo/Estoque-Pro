@@ -1,6 +1,6 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { AlertTriangle, CheckCircle2, Loader2, Save } from 'lucide-vue-next'
+import { AlertTriangle, Check, CheckCircle2, ChevronsUpDown, Loader2, Save } from 'lucide-vue-next'
 
 import {
   Dialog,
@@ -20,6 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { cn } from '@/lib/utils'
 
 import { useDocumentMask } from '@/composables/useDocumentMask'
 import { usePhoneMask } from '@/composables/usePhoneMask'
@@ -69,6 +79,37 @@ const CIDADE_MAX = 80
 
 // aceita apenas dígitos (0-9) — usado para validar documento, telefone e cep
 const SOMENTE_DIGITOS = /^\d+$/
+
+// 🟢 NOVO: lista das 27 unidades federativas, usada no combobox de UF.
+const UFS = [
+  { sigla: 'AC', nome: 'Acre' },
+  { sigla: 'AL', nome: 'Alagoas' },
+  { sigla: 'AP', nome: 'Amapá' },
+  { sigla: 'AM', nome: 'Amazonas' },
+  { sigla: 'BA', nome: 'Bahia' },
+  { sigla: 'CE', nome: 'Ceará' },
+  { sigla: 'DF', nome: 'Distrito Federal' },
+  { sigla: 'ES', nome: 'Espírito Santo' },
+  { sigla: 'GO', nome: 'Goiás' },
+  { sigla: 'MA', nome: 'Maranhão' },
+  { sigla: 'MT', nome: 'Mato Grosso' },
+  { sigla: 'MS', nome: 'Mato Grosso do Sul' },
+  { sigla: 'MG', nome: 'Minas Gerais' },
+  { sigla: 'PA', nome: 'Pará' },
+  { sigla: 'PB', nome: 'Paraíba' },
+  { sigla: 'PR', nome: 'Paraná' },
+  { sigla: 'PE', nome: 'Pernambuco' },
+  { sigla: 'PI', nome: 'Piauí' },
+  { sigla: 'RJ', nome: 'Rio de Janeiro' },
+  { sigla: 'RN', nome: 'Rio Grande do Norte' },
+  { sigla: 'RS', nome: 'Rio Grande do Sul' },
+  { sigla: 'RO', nome: 'Rondônia' },
+  { sigla: 'RR', nome: 'Roraima' },
+  { sigla: 'SC', nome: 'Santa Catarina' },
+  { sigla: 'SP', nome: 'São Paulo' },
+  { sigla: 'SE', nome: 'Sergipe' },
+  { sigla: 'TO', nome: 'Tocantins' },
+]
 
 const documento = useDocumentMask()
 const telefone = usePhoneMask()
@@ -270,6 +311,123 @@ const ufModel = computed({
       .slice(0, 2)
   },
 })
+
+// 🟢 NOVO: estado do combobox de UF (Popover + Command).
+const ufAberto = ref(false)
+
+// nome completo da UF selecionada — mostrado no botão do combobox
+const ufSelecionada = computed(() => UFS.find((u) => u.sigla === form.uf) || null)
+
+// 🟢 NOVO: combobox de Cidade (Popover + Command), nos mesmos moldes do de UF.
+// Diferente da UF (lista fixa de 27 itens), a lista de cidades vem da API do
+// IBGE com TODOS os municípios do Brasil — carregada uma única vez, sob
+// demanda (só quando o usuário abre o combobox pela primeira vez).
+// Isso permite digitar a cidade sem precisar escolher a UF antes: ao
+// selecionar a cidade, a UF correspondente é preenchida automaticamente.
+const cidadeAberta = ref(false)
+const buscaCidade = ref('')
+const municipios = ref([]) // [{ nome, uf }] — todos os municípios do Brasil
+const municipiosCarregados = ref(false)
+const carregandoMunicipios = ref(false)
+const erroCarregarMunicipios = ref(false)
+
+// remove acentos e normaliza caixa — usado pra comparar nomes de cidade
+// digitados livremente (ex.: "sao paulo" precisa encontrar "São Paulo")
+function normalizarTexto(valor) {
+  return (valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+async function carregarMunicipios() {
+  if (municipiosCarregados.value || carregandoMunicipios.value) return
+
+  carregandoMunicipios.value = true
+  erroCarregarMunicipios.value = false
+  try {
+    const resposta = await fetch('https://servicodados.ibge.gov.br/api/v1/localidades/municipios')
+    if (!resposta.ok) throw new Error('Falha ao buscar municípios do IBGE')
+
+    const dados = await resposta.json()
+    municipios.value = dados
+      .map((m) => ({
+        nome: m?.nome ?? '',
+        // a API do IBGE aninha a UF dentro de microrregiao/mesorregiao;
+        // o fallback cobre a variação mais nova (regiao-imediata), caso a
+        // estrutura mude no futuro.
+        uf:
+          m?.microrregiao?.mesorregiao?.UF?.sigla ??
+          m?.['regiao-imediata']?.['regiao-intermediaria']?.UF?.sigla ??
+          '',
+      }))
+      .filter((m) => m.nome && m.uf)
+    municipiosCarregados.value = true
+  } catch {
+    // API fora do ar / sem internet: o template cai no fallback de texto livre
+    erroCarregarMunicipios.value = true
+  } finally {
+    carregandoMunicipios.value = false
+  }
+}
+
+// carrega a lista nacional assim que o combobox de cidade é aberto pela
+// primeira vez (evita baixar ~5.500 municípios sem necessidade)
+watch(cidadeAberta, (aberto) => {
+  if (aberto) carregarMunicipios()
+})
+
+// filtra localmente (sem nova requisição a cada letra digitada), exige ao
+// menos 2 letras, e prioriza: 1) cidades da UF já selecionada, 2) cidades
+// cujo nome começa com o termo buscado, 3) ordem alfabética. Limita a 30
+// resultados pra manter a lista curta e rápida de navegar.
+const cidadesFiltradas = computed(() => {
+  const busca = normalizarTexto(buscaCidade.value)
+  if (busca.length < 2) return []
+
+  const encontrados = municipios.value.filter((m) => normalizarTexto(m.nome).includes(busca))
+
+  encontrados.sort((a, b) => {
+    if (form.uf) {
+      const aMesmaUf = a.uf === form.uf
+      const bMesmaUf = b.uf === form.uf
+      if (aMesmaUf && !bMesmaUf) return -1
+      if (!aMesmaUf && bMesmaUf) return 1
+    }
+
+    const aComeca = normalizarTexto(a.nome).startsWith(busca)
+    const bComeca = normalizarTexto(b.nome).startsWith(busca)
+    if (aComeca && !bComeca) return -1
+    if (!aComeca && bComeca) return 1
+
+    return a.nome.localeCompare(b.nome, 'pt-BR')
+  })
+
+  return encontrados.slice(0, 30)
+})
+
+// ao selecionar uma cidade da lista (clique ou teclado), preenche cidade E
+// UF juntas a partir do mesmo registro do IBGE — é o que garante que
+// "Dourados" sempre puxe automaticamente "MS".
+function selecionarCidade(municipio) {
+  form.cidade = municipio.nome.slice(0, CIDADE_MAX)
+  form.uf = municipio.uf
+  cidadeAberta.value = false
+  buscaCidade.value = ''
+}
+
+function selecionarUf(sigla) {
+  const ufAnterior = form.uf
+  ufModel.value = sigla
+  ufAberto.value = false
+
+  // troca manual de UF: a cidade selecionada anteriormente pode não
+  // pertencer ao novo estado, então limpamos pra evitar inconsistência.
+  if (sigla !== ufAnterior) {
+    form.cidade = ''
+  }
+}
 
 const documentoBadge = computed(() => {
   if (!documento.raw.value) {
@@ -497,6 +655,7 @@ function preencherFormulario() {
   }
 
   email.status = 'idle'
+  buscaCidade.value = ''
   Object.keys(erros).forEach((chave) => delete erros[chave])
 
   // captura o snapshot DEPOIS de preencher — é a "foto" do estado original pro diff
@@ -1137,13 +1296,54 @@ async function salvar() {
 
             <div class="col-span-1 sm:col-span-2 lg:col-span-2">
               <label for="uf" class="mb-1 block text-xs font-medium text-foreground">UF</label>
-              <Input
-                id="uf"
-                v-model="ufModel"
-                placeholder="MS"
-                :maxlength="2"
-                class="h-9 cursor-text text-xs uppercase"
-              />
+              <Popover v-model:open="ufAberto">
+                <PopoverTrigger as-child>
+                  <Button
+                    id="uf"
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    :aria-expanded="ufAberto"
+                    class="h-9 w-full cursor-pointer justify-between px-3 text-xs font-normal"
+                    :aria-invalid="!!erros.uf"
+                  >
+                    <span :class="!form.uf ? 'text-muted-foreground' : ''">
+                      {{ form.uf ? `${form.uf} — ${ufSelecionada?.nome ?? ''}` : 'Selecione a UF' }}
+                    </span>
+                    <ChevronsUpDown class="size-3.5 shrink-0 text-muted-foreground/60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent class="w-[240px] cursor-auto p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Buscar estado..." class="cursor-text text-xs" />
+                    <CommandList>
+                      <CommandEmpty class="py-3 text-center text-xs text-muted-foreground">
+                        Nenhum estado encontrado.
+                      </CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          v-for="uf in UFS"
+                          :key="uf.sigla"
+                          :value="`${uf.sigla} ${uf.nome}`"
+                          class="cursor-pointer text-xs"
+                          @select="selecionarUf(uf.sigla)"
+                        >
+                          <Check
+                            :class="
+                              cn(
+                                'mr-2 size-3.5',
+                                form.uf === uf.sigla ? 'opacity-100' : 'opacity-0',
+                              )
+                            "
+                          />
+                          <span class="font-medium">{{ uf.sigla }}</span>
+                          <span class="ml-1.5 text-muted-foreground">{{ uf.nome }}</span>
+                        </CommandItem>
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               <p v-if="erros.uf" class="mt-0.5 text-[10px] text-destructive">{{ erros.uf }}</p>
             </div>
 
@@ -1173,17 +1373,93 @@ async function salvar() {
               />
             </div>
 
+            <!-- 🟢 NOVO: combobox de Cidade — mesmo padrão do combobox de UF acima
+                 (Popover + Command), mas com lista nacional de municípios vinda do
+                 IBGE. Selecionar uma cidade preenche a UF automaticamente. -->
             <div class="col-span-2 sm:col-span-6 lg:col-span-4">
               <label for="cidade" class="mb-1 block text-xs font-medium text-foreground">
                 Cidade
               </label>
-              <Input
-                id="cidade"
-                v-model="cidadeModel"
-                placeholder="Ex.: Dourados"
-                :maxlength="CIDADE_MAX"
-                class="h-9 cursor-text text-xs"
-              />
+
+              <template v-if="!erroCarregarMunicipios">
+                <Popover v-model:open="cidadeAberta">
+                  <PopoverTrigger as-child>
+                    <Button
+                      id="cidade"
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      :aria-expanded="cidadeAberta"
+                      class="h-9 w-full cursor-pointer justify-between px-3 text-xs font-normal"
+                    >
+                      <span :class="!form.cidade ? 'text-muted-foreground' : ''" class="truncate">
+                        {{ form.cidade || 'Selecione a cidade' }}
+                      </span>
+                      <Loader2
+                        v-if="carregandoMunicipios"
+                        class="size-3.5 shrink-0 animate-spin text-muted-foreground/60"
+                      />
+                      <ChevronsUpDown v-else class="size-3.5 shrink-0 text-muted-foreground/60" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent class="w-[280px] cursor-auto p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        v-model="buscaCidade"
+                        placeholder="Digite ao menos 2 letras..."
+                        class="cursor-text text-xs"
+                      />
+                      <CommandList>
+                        <CommandEmpty class="py-3 text-center text-xs text-muted-foreground">
+                          {{
+                            buscaCidade.trim().length < 2
+                              ? 'Digite ao menos 2 letras para buscar.'
+                              : 'Nenhuma cidade encontrada.'
+                          }}
+                        </CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            v-for="cidade in cidadesFiltradas"
+                            :key="`${cidade.nome}-${cidade.uf}`"
+                            :value="`${cidade.nome} ${cidade.uf}`"
+                            class="cursor-pointer text-xs"
+                            @select="selecionarCidade(cidade)"
+                          >
+                            <Check
+                              :class="
+                                cn(
+                                  'mr-2 size-3.5',
+                                  form.cidade === cidade.nome && form.uf === cidade.uf
+                                    ? 'opacity-100'
+                                    : 'opacity-0',
+                                )
+                              "
+                            />
+                            <span class="font-medium">{{ cidade.nome }}</span>
+                            <span class="ml-1.5 text-muted-foreground">— {{ cidade.uf }}</span>
+                          </CommandItem>
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <p class="mt-0.5 truncate text-[10px] text-muted-foreground">
+                  Selecionar a cidade preenche a UF automaticamente.
+                </p>
+              </template>
+
+              <template v-else>
+                <Input
+                  id="cidade"
+                  v-model="cidadeModel"
+                  placeholder="Ex.: Dourados"
+                  :maxlength="CIDADE_MAX"
+                  class="h-9 cursor-text text-xs"
+                />
+                <p class="mt-0.5 truncate text-[10px] text-muted-foreground">
+                  Não foi possível carregar a lista de cidades. Digite manualmente.
+                </p>
+              </template>
             </div>
           </div>
         </section>
