@@ -49,7 +49,10 @@ const emit = defineEmits(['update:open', 'created'])
 
 const { sucesso, erro } = useFeedback()
 
-// Composables para carregar dados do Backend/Store
+// -----------------------------------------------------------------------------
+// COMPOSABLES
+// -----------------------------------------------------------------------------
+
 const {
   pessoas,
   buscar: buscarPessoas,
@@ -59,58 +62,79 @@ const {
 } = usePeople()
 
 const { produtos, refetch: buscarProdutos, criar: criarProduto } = useProducts()
+
 const { createSale, updateSale, getSale, isCreating, isUpdating } = useSales()
 
-// Identifica se estamos em modo de edição
+// -----------------------------------------------------------------------------
+// MODO
+// -----------------------------------------------------------------------------
+
 const modoEdicao = computed(() => !!props.sale?.id)
 
-// Valor especial reservado para venda avulsa/sem cliente
+// Valor reservado para venda sem cliente
 const ID_SEM_CLIENTE = 'sem_cliente'
 
-// Estados da Venda
+// -----------------------------------------------------------------------------
+// ESTADOS DA VENDA
+// -----------------------------------------------------------------------------
+
 const clienteId = ref(ID_SEM_CLIENTE)
 const buscaCliente = ref('')
 const buscaBruta = ref('')
 const itens = ref([])
 const pagamento = ref('')
 
-// Controle dos modais aninhados
+// -----------------------------------------------------------------------------
+// MODAIS
+// -----------------------------------------------------------------------------
+
 const pessoaModalAberto = ref(false)
 const produtoModalAberto = ref(false)
-// Quando preenchido, o modal de produto abre em modo edição já com estes
-// dados (usado pelo botão "Repor estoque" de um item sem estoque). Quando
-// null, o modal abre em modo criação normal ("Novo produto").
+
 const produtoEmEdicao = ref(null)
 
-// Ao fechar o modal de produto, sempre volta pro estado de criação limpo
+// Ao fechar o modal de produto, limpa o modo de edição.
 watch(produtoModalAberto, (aberto) => {
-  if (!aberto) produtoEmEdicao.value = null
+  if (!aberto) {
+    produtoEmEdicao.value = null
+  }
 })
 
-// Indica que estamos buscando os itens completos da venda no backend (modo edição)
+// -----------------------------------------------------------------------------
+// CARREGAMENTO
+// -----------------------------------------------------------------------------
+
 const carregandoItens = ref(false)
 
 const LIMITE_BUSCA_PRODUTO = 60
 
-// ---- Recarrega clientes e produtos ao abrir e popula se for edição ----
+// -----------------------------------------------------------------------------
+// ABERTURA DA VENDA
+// -----------------------------------------------------------------------------
+
 watch(
   () => props.open,
   async (aberto) => {
     if (!aberto) return
 
-    // Limpa estritamente o campo de busca de produtos ao abrir
     buscaBruta.value = ''
     resetar()
 
     const tarefas = []
+
     if (typeof buscarPessoas === 'function') {
-      tarefas.push(buscarPessoas({ type: 'todos', active: 'ativo' }))
+      tarefas.push(
+        buscarPessoas({
+          type: 'todos',
+          active: 'ativo',
+        }),
+      )
     }
+
     if (typeof buscarProdutos === 'function') {
       tarefas.push(buscarProdutos())
     }
-    // Aguarda pessoas/produtos para conseguir cruzar corretamente os itens
-    // da venda com o estoque atual dos produtos.
+
     await Promise.all(tarefas)
 
     if (props.sale) {
@@ -119,7 +143,10 @@ watch(
   },
 )
 
-// ---- Carrega os dados completos da venda (incluindo itens) para edição ----
+// -----------------------------------------------------------------------------
+// CARREGAR VENDA PARA EDIÇÃO
+// -----------------------------------------------------------------------------
+
 async function carregarVendaParaEdicao(vendaBase) {
   const idVenda = vendaBase?.id
 
@@ -127,29 +154,31 @@ async function carregarVendaParaEdicao(vendaBase) {
     (Array.isArray(vendaBase?.items) && vendaBase.items.length > 0) ||
     (Array.isArray(vendaBase?.sale_items) && vendaBase.sale_items.length > 0)
 
-  // Se o objeto recebido já vier com os itens (ex: outra tela que já carregou
-  // o detalhe completo), não precisa buscar de novo.
   if (jaTemItens) {
     popularDadosEdicao(vendaBase)
     return
   }
 
-  // A listagem de vendas normalmente não traz os itens, só o resumo.
-  // Buscamos o detalhe completo da venda para exibir o carrinho corretamente.
   if (typeof getSale !== 'function' || !idVenda) {
     popularDadosEdicao(vendaBase)
     return
   }
 
   carregandoItens.value = true
+
   try {
     const resposta = await getSale(idVenda)
     const detalhes = resposta?.data || resposta
-    popularDadosEdicao({ ...vendaBase, ...detalhes })
+
+    popularDadosEdicao({
+      ...vendaBase,
+      ...detalhes,
+    })
   } catch (err) {
     console.error('Erro ao carregar itens da venda:', err)
-    // Fallback: mantém cliente e pagamento preenchidos, mesmo sem os itens.
+
     popularDadosEdicao(vendaBase)
+
     erro(
       'Não foi possível carregar os itens desta venda',
       'Cliente e pagamento foram preenchidos. Revise os itens manualmente antes de salvar.',
@@ -159,32 +188,43 @@ async function carregarVendaParaEdicao(vendaBase) {
   }
 }
 
-// Popula os campos garantindo que os itens da venda apareçam de imediato
+// -----------------------------------------------------------------------------
+// POPULAR DADOS DA EDIÇÃO
+// -----------------------------------------------------------------------------
+
 function popularDadosEdicao(venda) {
   clienteId.value =
     venda.person_id || venda.customer_id
       ? String(venda.person_id || venda.customer_id)
       : ID_SEM_CLIENTE
+
   pagamento.value = venda.payment_method || ''
 
-  // Descontos e acréscimos
   desconto.setValue(venda.discount_value ?? venda.discount ?? 0)
+
   descontoPercentual.setValue(venda.discount_percentage ?? 0)
+
   acrescimo.setValue(venda.surcharge_value ?? venda.surcharge ?? 0)
+
   acrescimoPercentual.setValue(venda.surcharge_percentage ?? 0)
 
-  // Extrai os itens da venda utilizando as informações diretas da venda
   const listaItensBruta = venda.items || venda.sale_items || []
+
   itens.value = mapItensDaVenda(listaItensBruta)
 }
 
-// Converte os itens brutos vindos da API para o formato usado no carrinho,
-// cruzando com o estoque atual do produto para calcular o teto disponível.
+// -----------------------------------------------------------------------------
+// MAPEAR ITENS DA VENDA
+// -----------------------------------------------------------------------------
+
 function mapItensDaVenda(listaItensBruta) {
-  if (!Array.isArray(listaItensBruta)) return []
+  if (!Array.isArray(listaItensBruta)) {
+    return []
+  }
 
   return listaItensBruta.map((i) => {
     const prodId = i.product_id || i.product?.id || i.id
+
     const produtoAtual = (produtos.value || []).find((p) => p.id === prodId)
 
     const nomeProduto =
@@ -197,15 +237,13 @@ function mapItensDaVenda(listaItensBruta) {
       'Produto'
 
     const precoUnitario = safeNumber(i.unit_price || i.price || 0)
+
     const quantidade = safeNumber(i.quantity || i.qtd || 1)
 
-    // O estoque do produto já reflete a baixa feita por esta venda. Somamos
-    // a quantidade já registrada aqui para saber o teto real disponível
-    // durante a edição (senão o usuário não conseguiria nem manter a
-    // quantidade original).
     const estoqueAtualProduto = safeNumber(
       produtoAtual?.estoque ?? produtoAtual?.stock_quantity ?? 0,
     )
+
     const estoqueDisponivel = produtoAtual
       ? estoqueAtualProduto + quantidade
       : Math.max(quantidade, 9999)
@@ -220,22 +258,33 @@ function mapItensDaVenda(listaItensBruta) {
   })
 }
 
-// ---- Filtro local de clientes no Select ----
+// -----------------------------------------------------------------------------
+// CLIENTES
+// -----------------------------------------------------------------------------
+
 const clientesAtivos = computed(() => {
   const termo = buscaCliente.value.trim().toLowerCase()
+
   return (pessoas.value || [])
     .filter((p) => p.status === 'ativo' || p.active)
     .filter((p) => {
       if (!termo) return true
+
       const nomeMatch = (p.nome || p.name || '').toLowerCase().includes(termo)
+
       const docMatch = (p.documento || p.document || '').toLowerCase().includes(termo)
+
       return nomeMatch || docMatch
     })
 })
 
-// ---- Filtro local de busca de produtos ----
+// -----------------------------------------------------------------------------
+// BUSCA DE PRODUTOS
+// -----------------------------------------------------------------------------
+
 const busca = computed({
   get: () => buscaBruta.value,
+
   set: (valor) => {
     buscaBruta.value = (valor ?? '').slice(0, LIMITE_BUSCA_PRODUTO)
   },
@@ -243,7 +292,11 @@ const busca = computed({
 
 const disponiveis = computed(() => {
   const termo = busca.value.trim().toLowerCase()
-  if (termo === '') return []
+
+  if (termo === '') {
+    return []
+  }
+
   return (produtos.value || []).filter(
     (p) =>
       (p.nome || p.name || '').toLowerCase().includes(termo) ||
@@ -251,18 +304,23 @@ const disponiveis = computed(() => {
   )
 })
 
-// ---- Helpers de cálculo ----
+// -----------------------------------------------------------------------------
+// HELPERS
+// -----------------------------------------------------------------------------
+
 function safeNumber(val) {
   const num = Number(val)
+
   return isNaN(num) ? 0 : num
 }
 
 function brl(valor) {
-  return safeNumber(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return safeNumber(valor).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
 }
 
-// Formatação "crua" (sem símbolo de moeda/percentual) usada para preencher o
-// lado convertido dos campos de desconto/acréscimo.
 function formatarNumero(valor) {
   return safeNumber(valor).toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
@@ -272,23 +330,42 @@ function formatarNumero(valor) {
 
 function nivelEstoque(p) {
   const qtd = safeNumber(p.estoque ?? p.stock_quantity)
+
   const min = safeNumber(p.minimo ?? p.min_stock_quantity)
-  if (qtd <= 0) return 'sem'
-  if (qtd <= min) return 'baixo'
+
+  if (qtd <= 0) {
+    return 'sem'
+  }
+
+  if (qtd <= min) {
+    return 'baixo'
+  }
+
   return 'ok'
 }
+
+// -----------------------------------------------------------------------------
+// MÁSCARA DE MOEDA
+// -----------------------------------------------------------------------------
 
 function criarMascaraMoeda(limiteDigitos = 8) {
   const raw = ref('')
 
   const valorNumerico = computed(() => {
-    if (!raw.value) return 0
+    if (!raw.value) {
+      return 0
+    }
+
     const num = Number(raw.value) / 100
+
     return isNaN(num) ? 0 : num
   })
 
   const formatted = computed(() => {
-    if (!raw.value) return ''
+    if (!raw.value) {
+      return ''
+    }
+
     return valorNumerico.value.toLocaleString('pt-BR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -297,7 +374,7 @@ function criarMascaraMoeda(limiteDigitos = 8) {
 
   function onInput(evento) {
     const val = evento?.target?.value || ''
-    // Corta os dígitos de acordo com o limite passado (padrão: 8 dígitos = até R$ 999.999,99)
+
     raw.value = val.replace(/\D/g, '').slice(0, limiteDigitos)
   }
 
@@ -306,24 +383,41 @@ function criarMascaraMoeda(limiteDigitos = 8) {
       raw.value = ''
       return
     }
-    // Aplica o slice também ao definir um valor manual
+
     raw.value = String(Math.round(Number(numero) * 100)).slice(0, limiteDigitos)
   }
 
-  return { raw, formatted, valorNumerico, onInput, setValue }
+  return {
+    raw,
+    formatted,
+    valorNumerico,
+    onInput,
+    setValue,
+  }
 }
+
+// -----------------------------------------------------------------------------
+// MÁSCARA DE PERCENTUAL
+// -----------------------------------------------------------------------------
 
 function criarMascaraPercentual(limiteDigitos = 5) {
   const raw = ref('')
 
   const valorNumerico = computed(() => {
-    if (!raw.value) return 0
+    if (!raw.value) {
+      return 0
+    }
+
     const num = Number(raw.value) / 100
+
     return isNaN(num) ? 0 : num
   })
 
   const formatted = computed(() => {
-    if (!raw.value) return ''
+    if (!raw.value) {
+      return ''
+    }
+
     return valorNumerico.value.toLocaleString('pt-BR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -332,9 +426,13 @@ function criarMascaraPercentual(limiteDigitos = 5) {
 
   function onInput(evento) {
     const val = evento?.target?.value || ''
-    // Limite: no máximo 100,00% (raw representa o percentual × 100).
+
     let digitos = val.replace(/\D/g, '').slice(0, limiteDigitos)
-    if (Number(digitos) > 10000) digitos = '10000'
+
+    if (Number(digitos) > 10000) {
+      digitos = '10000'
+    }
+
     raw.value = digitos
   }
 
@@ -343,23 +441,43 @@ function criarMascaraPercentual(limiteDigitos = 5) {
       raw.value = ''
       return
     }
+
     raw.value = String(Math.round(Number(numero) * 100))
   }
 
-  return { raw, formatted, valorNumerico, onInput, setValue }
+  return {
+    raw,
+    formatted,
+    valorNumerico,
+    onInput,
+    setValue,
+  }
 }
 
+// -----------------------------------------------------------------------------
+// DESCONTO / ACRÉSCIMO
+// -----------------------------------------------------------------------------
+
 const desconto = criarMascaraMoeda(8)
+
 const descontoPercentual = criarMascaraPercentual(5)
+
 const descontoValorPreenchido = computed(() => desconto.valorNumerico.value > 0)
+
 const descontoPercentualPreenchido = computed(() => descontoPercentual.valorNumerico.value > 0)
 
 const acrescimo = criarMascaraMoeda(8)
+
 const acrescimoPercentual = criarMascaraPercentual(5)
+
 const acrescimoValorPreenchido = computed(() => acrescimo.valorNumerico.value > 0)
+
 const acrescimoPercentualPreenchido = computed(() => acrescimoPercentual.valorNumerico.value > 0)
 
-// ---- Navegação de busca por teclado ----
+// -----------------------------------------------------------------------------
+// NAVEGAÇÃO DE PRODUTOS
+// -----------------------------------------------------------------------------
+
 const indiceAtivo = ref(-1)
 
 watch(busca, () => {
@@ -367,18 +485,23 @@ watch(busca, () => {
 })
 
 function onBuscaProdutoKeydown(evento) {
-  if (disponiveis.value.length === 0) return
+  if (disponiveis.value.length === 0) {
+    return
+  }
 
   if (evento.key === 'ArrowDown') {
     evento.preventDefault()
+
     indiceAtivo.value = (indiceAtivo.value + 1) % disponiveis.value.length
   } else if (evento.key === 'ArrowUp') {
     evento.preventDefault()
+
     indiceAtivo.value =
       indiceAtivo.value <= 0 ? disponiveis.value.length - 1 : indiceAtivo.value - 1
   } else if (evento.key === 'Enter') {
     if (indiceAtivo.value >= 0 && indiceAtivo.value < disponiveis.value.length) {
       evento.preventDefault()
+
       adicionar(disponiveis.value[indiceAtivo.value].id)
     }
   } else if (evento.key === 'Escape') {
@@ -386,54 +509,67 @@ function onBuscaProdutoKeydown(evento) {
   }
 }
 
-// Totais
+// -----------------------------------------------------------------------------
+// TOTAIS
+// -----------------------------------------------------------------------------
+
 const subtotal = computed(() => {
   const res = itens.value.reduce((s, i) => s + safeNumber(i.qtd) * safeNumber(i.valor), 0)
+
   return safeNumber(res)
 })
 
 const valorDescontoAplicado = computed(() => {
   let val = 0
+
   if (descontoValorPreenchido.value) {
     val = desconto.valorNumerico.value
   } else if (descontoPercentualPreenchido.value) {
     val = subtotal.value * (descontoPercentual.valorNumerico.value / 100)
   }
+
   return safeNumber(val)
 })
 
 const valorAcrescimoAplicado = computed(() => {
   let val = 0
+
   if (acrescimoValorPreenchido.value) {
     val = acrescimo.valorNumerico.value
   } else if (acrescimoPercentualPreenchido.value) {
     val = subtotal.value * (acrescimoPercentual.valorNumerico.value / 100)
   }
+
   return safeNumber(val)
 })
 
 const total = computed(() => {
   const res = subtotal.value - valorDescontoAplicado.value + valorAcrescimoAplicado.value
+
   return Math.max(0, safeNumber(res))
 })
 
-// ---- Conversão automática entre R$ e % (desconto e acréscimo) ----
-// Enquanto um lado está sendo preenchido, o outro fica desabilitado e passa
-// a exibir o valor JÁ CONVERTIDO com base no subtotal, em vez de ficar vazio.
-// Ex.: subtotal R$ 100, desconto de R$ 10 digitado → o campo de % mostra
-// automaticamente "10,00".
+// -----------------------------------------------------------------------------
+// CONVERSÃO DESCONTO / ACRÉSCIMO
+// -----------------------------------------------------------------------------
+
 const descontoValorExibido = computed(() => {
   if (descontoPercentualPreenchido.value) {
     return formatarNumero(valorDescontoAplicado.value)
   }
+
   return desconto.formatted.value
 })
 
 const descontoPercentualExibido = computed(() => {
   if (descontoValorPreenchido.value) {
-    if (subtotal.value <= 0) return '0,00'
+    if (subtotal.value <= 0) {
+      return '0,00'
+    }
+
     return formatarNumero((valorDescontoAplicado.value / subtotal.value) * 100)
   }
+
   return descontoPercentual.formatted.value
 })
 
@@ -441,55 +577,81 @@ const acrescimoValorExibido = computed(() => {
   if (acrescimoPercentualPreenchido.value) {
     return formatarNumero(valorAcrescimoAplicado.value)
   }
+
   return acrescimo.formatted.value
 })
 
 const acrescimoPercentualExibido = computed(() => {
   if (acrescimoValorPreenchido.value) {
-    if (subtotal.value <= 0) return '0,00'
+    if (subtotal.value <= 0) {
+      return '0,00'
+    }
+
     return formatarNumero((valorAcrescimoAplicado.value / subtotal.value) * 100)
   }
+
   return acrescimoPercentual.formatted.value
 })
 
-// Limite: não faz sentido descontar mais do que o próprio subtotal da venda.
-// Se o valor digitado ultrapassar o subtotal, trava automaticamente nele.
+// -----------------------------------------------------------------------------
+// INPUT DESCONTO
+// -----------------------------------------------------------------------------
+
 function onInputDescontoValor(evento) {
   desconto.onInput(evento)
+
   if (desconto.valorNumerico.value > subtotal.value) {
     desconto.setValue(subtotal.value)
   }
 }
 
+// -----------------------------------------------------------------------------
+// RESET
+// -----------------------------------------------------------------------------
+
 function resetar() {
   clienteId.value = ID_SEM_CLIENTE
+
   buscaCliente.value = ''
   buscaBruta.value = ''
   itens.value = []
+
   desconto.setValue('')
   descontoPercentual.setValue('')
+
   acrescimo.setValue('')
   acrescimoPercentual.setValue('')
+
   pagamento.value = ''
   indiceAtivo.value = -1
 }
 
+// -----------------------------------------------------------------------------
+// PRODUTOS
+// -----------------------------------------------------------------------------
+
 function adicionar(id) {
   const p = (produtos.value || []).find((x) => x.id === id)
+
   const qtdEstoque = safeNumber(p?.estoque ?? p?.stock_quantity ?? 9999)
+
   const precoVenda = safeNumber(p?.preco ?? p?.sale_price ?? 0)
 
   if (!p || qtdEstoque <= 0) {
     erro('Produto sem estoque. Registre uma compra para repor.')
+
     return
   }
 
   const atual = itens.value.find((i) => i.id === id)
+
   if (atual) {
     if (atual.qtd >= qtdEstoque) {
       erro(`Estoque disponível: ${qtdEstoque} unidades.`)
+
       return
     }
+
     atual.qtd += 1
   } else {
     itens.value.push({
@@ -514,39 +676,134 @@ function aumentar(item) {
   item.qtd = Math.min(item.estoque, item.qtd + 1)
 }
 
-// Abre o mesmo modal de "Novo produto" só que em modo edição, já carregado
-// com o produto sem estoque. O usuário repõe o estoque sem sair da venda.
+// -----------------------------------------------------------------------------
+// MODAL DE PRODUTO
+// -----------------------------------------------------------------------------
+
 function abrirProdutoParaReporEstoque(produto) {
   produtoEmEdicao.value = produto
+
   produtoModalAberto.value = true
 }
 
 function abrirNovoProduto() {
   produtoEmEdicao.value = null
+
   produtoModalAberto.value = true
 }
 
-// ---- Callbacks dos Modais de Cadastro ----
+// -----------------------------------------------------------------------------
+// CADASTRO DE PESSOA
+// -----------------------------------------------------------------------------
+//
+// IMPORTANTE:
+//
+// A API não está retornando o ID da pessoa criada.
+//
+// Então NÃO usamos:
+//
+//   novaPessoa.data.id
+//
+// Em vez disso:
+//
+// 1. cadastramos a pessoa;
+// 2. buscamos novamente a lista;
+// 3. assumimos que o backend retorna o último cadastro
+//    primeiro;
+// 4. pegamos pessoas.value[0];
+// 5. usamos o ID desse registro para selecionar o cliente.
+//
+// No Select:
+//
+//   Venda sem cliente  -> primeiro item visual
+//   pessoas.value[0]   -> segundo item visual
+//
+// -----------------------------------------------------------------------------
+
 async function pessoaCriada(novaPessoa) {
   const pessoaObj = novaPessoa?.data || novaPessoa
-  const idExtraido = pessoaObj?.id
+
   const nomeExtraido = pessoaObj?.nome || pessoaObj?.name || 'Cliente'
 
-  sucesso('Cliente cadastrado', `${nomeExtraido} selecionado nesta venda.`)
+  sucesso('Cliente cadastrado', `${nomeExtraido} será selecionado nesta venda.`)
 
-  if (typeof buscarPessoas === 'function') {
-    await buscarPessoas({ type: 'todos', active: 'ativo' })
-  }
+  try {
+    // -------------------------------------------------------
+    // 1. RECARREGA A LISTA DE PESSOAS
+    // -------------------------------------------------------
 
-  if (idExtraido) {
-    clienteId.value = String(idExtraido)
+    if (typeof buscarPessoas === 'function') {
+      await buscarPessoas({
+        type: 'todos',
+        active: 'ativo',
+      })
+    }
+
+    // -------------------------------------------------------
+    // 2. PEGA O PRIMEIRO REGISTRO DA LISTA
+    // -------------------------------------------------------
+    //
+    // A regra definida é:
+    //
+    // pessoas.value[0] =
+    // último cadastro realizado.
+    //
+    // "Venda sem cliente" NÃO está dentro de pessoas.
+    // Ela é adicionada manualmente no template.
+    //
+    // Portanto:
+    //
+    // Select item 1 -> Venda sem cliente
+    // Select item 2 -> pessoas.value[0]
+    //
+    const ultimoCadastrado = pessoas.value?.[0]
+
+    // -------------------------------------------------------
+    // 3. VALIDA SE ENCONTROU A PESSOA
+    // -------------------------------------------------------
+
+    if (!ultimoCadastrado || !ultimoCadastrado.id) {
+      erro(
+        'Cliente cadastrado',
+        'A pessoa foi cadastrada, mas não foi encontrada como o primeiro registro da lista.',
+      )
+
+      return
+    }
+
+    // -------------------------------------------------------
+    // 4. SELECIONA AUTOMATICAMENTE
+    // -------------------------------------------------------
+
+    clienteId.value = String(ultimoCadastrado.id)
+
+    // Limpa a pesquisa do Select
+    buscaCliente.value = ''
+
+    // -------------------------------------------------------
+    // 5. FECHA O MODAL DE CADASTRO
+    // -------------------------------------------------------
+
+    pessoaModalAberto.value = false
+
+    console.log('[Nova venda] Cliente selecionado automaticamente:', {
+      id: ultimoCadastrado.id,
+      nome: ultimoCadastrado.nome || ultimoCadastrado.name,
+    })
+  } catch (err) {
+    console.error('Erro ao selecionar automaticamente o cliente:', err)
+
+    erro(
+      'Cliente cadastrado',
+      'A pessoa foi cadastrada, mas não foi possível selecioná-la automaticamente.',
+    )
   }
 }
 
-// Disparado tanto na criação quanto na edição de produto (evento "salvo").
-// Em ambos os casos: atualiza a lista de produtos e adiciona/incrementa o
-// item no carrinho — no caso da reposição de estoque, é exatamente isso que
-// o usuário queria ao clicar em "Repor estoque".
+// -----------------------------------------------------------------------------
+// CADASTRO / EDIÇÃO DE PRODUTO
+// -----------------------------------------------------------------------------
+
 async function produtoCriado(novoProduto) {
   const prodObj = novoProduto?.data || novoProduto
 
@@ -559,41 +816,59 @@ async function produtoCriado(novoProduto) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// FECHAR
+// -----------------------------------------------------------------------------
+
 function fechar() {
   emit('update:open', false)
 }
 
-// ---- Submissão (Criar ou Salvar Edição) ----
+// -----------------------------------------------------------------------------
+// SALVAR VENDA
+// -----------------------------------------------------------------------------
+
 async function salvar() {
-  if (isCreating.value || isUpdating.value || carregandoItens.value) return
+  if (isCreating.value || isUpdating.value || carregandoItens.value) {
+    return
+  }
 
   if (!clienteId.value) {
     erro('Cliente não informado', 'Selecione um cliente ou escolha a opção de Venda Avulsa.')
+
     return
   }
 
   if (itens.value.length === 0) {
     erro('Carrinho vazio', 'Adicione pelo menos um produto para finalizar a venda.')
+
     return
   }
 
   if (!pagamento.value) {
     erro('Forma de pagamento não informada', 'Selecione como o cliente vai pagar.')
+
     return
   }
 
   try {
     const payload = {
       person_id: clienteId.value === ID_SEM_CLIENTE ? null : clienteId.value,
+
       payment_method: pagamento.value,
+
       discount_value: valorDescontoAplicado.value,
+
       discount_percentage: descontoPercentualPreenchido.value
         ? descontoPercentual.valorNumerico.value
         : 0,
+
       surcharge_value: valorAcrescimoAplicado.value,
+
       surcharge_percentage: acrescimoPercentualPreenchido.value
         ? acrescimoPercentual.valorNumerico.value
         : 0,
+
       items: itens.value.map((i) => ({
         product_id: i.id,
         quantity: i.qtd,
@@ -602,16 +877,19 @@ async function salvar() {
     }
 
     let response
+
     if (modoEdicao.value) {
-      // updateSale(id, data) — dois argumentos posicionais, nunca um objeto único.
       response = await updateSale(props.sale.id, payload)
+
       sucesso('Venda atualizada.', 'As alterações foram salvas com sucesso.')
     } else {
       response = await createSale(payload)
+
       sucesso('Venda finalizada.', 'Estoque atualizado com as saídas.')
     }
 
     emit('created', response)
+
     fechar()
   } catch (err) {
     erro(
@@ -629,6 +907,7 @@ async function salvar() {
         <DialogTitle class="text-xl font-semibold tracking-tight">
           {{ modoEdicao ? `Editar venda #${props.sale?.code || ''}` : 'Nova venda' }}
         </DialogTitle>
+
         <DialogDescription class="text-sm text-muted-foreground">
           {{
             modoEdicao
@@ -643,15 +922,26 @@ async function salvar() {
         @submit.prevent="salvar"
       >
         <div class="grid flex-1 gap-6 overflow-hidden lg:grid-cols-[minmax(0,1fr)_340px]">
+          <!-- ========================================================= -->
+          <!-- COLUNA ESQUERDA -->
+          <!-- ========================================================= -->
+
           <div class="flex flex-col space-y-6 overflow-y-auto pr-1">
+            <!-- ======================================================= -->
+            <!-- CLIENTE -->
+            <!-- ======================================================= -->
+
             <section class="space-y-3">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                 1. Cliente
               </h3>
+
               <div>
                 <label for="cliente" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Para quem é a venda? <span class="text-destructive">*</span>
+                  Para quem é a venda?
+                  <span class="text-destructive"> * </span>
                 </label>
+
                 <div class="flex gap-2">
                   <Select v-model="clienteId">
                     <SelectTrigger
@@ -660,12 +950,14 @@ async function salvar() {
                     >
                       <SelectValue placeholder="Selecione o cliente" />
                     </SelectTrigger>
+
                     <SelectContent>
                       <div class="sticky top-0 z-10 bg-popover p-2 border-b border-border">
                         <div class="relative flex items-center">
                           <Search
                             class="absolute left-2.5 size-3.5 text-muted-foreground pointer-events-none"
                           />
+
                           <input
                             v-model="buscaCliente"
                             type="text"
@@ -677,6 +969,7 @@ async function salvar() {
                       </div>
 
                       <div class="max-h-[200px] overflow-y-auto pt-1">
+                        <!-- PRIMEIRO ITEM -->
                         <SelectItem
                           :value="ID_SEM_CLIENTE"
                           class="cursor-pointer font-medium text-primary"
@@ -690,6 +983,15 @@ async function salvar() {
                         >
                           Nenhum cliente encontrado.
                         </p>
+
+                        <!--
+                          SEGUNDO ITEM EM DIANTE
+
+                          O primeiro registro de
+                          clientesAtivos será o
+                          último cadastro retornado
+                          pela API.
+                        -->
                         <SelectItem
                           v-for="p in clientesAtivos"
                           :key="p.id"
@@ -716,6 +1018,10 @@ async function salvar() {
               </div>
             </section>
 
+            <!-- ======================================================= -->
+            <!-- PRODUTOS -->
+            <!-- ======================================================= -->
+
             <section class="space-y-3 border-t border-border pt-6">
               <div class="flex items-center justify-between">
                 <h3
@@ -723,6 +1029,7 @@ async function salvar() {
                 >
                   2. Produtos
                 </h3>
+
                 <Button
                   type="button"
                   variant="ghost"
@@ -730,7 +1037,9 @@ async function salvar() {
                   class="h-7 cursor-pointer px-2 text-xs"
                   @click="abrirNovoProduto"
                 >
-                  <PackagePlus class="size-3.5" /> Novo produto
+                  <PackagePlus class="size-3.5" />
+
+                  Novo produto
                 </Button>
               </div>
 
@@ -738,6 +1047,7 @@ async function salvar() {
                 <label for="busca-produto" class="mb-1.5 block text-sm font-medium text-foreground">
                   Buscar produto para a venda
                 </label>
+
                 <div class="relative">
                   <input
                     id="busca-produto"
@@ -750,6 +1060,7 @@ async function salvar() {
                     class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-3 pr-14 text-sm outline-none focus:ring-2 focus:ring-ring"
                     @keydown="onBuscaProdutoKeydown"
                   />
+
                   <span
                     class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground/60"
                   >
@@ -777,11 +1088,16 @@ async function salvar() {
                   @mouseenter="indiceAtivo = idx"
                 >
                   <div class="min-w-0">
-                    <p class="truncate text-sm font-medium">{{ p.nome || p.name }}</p>
+                    <p class="truncate text-sm font-medium">
+                      {{ p.nome || p.name }}
+                    </p>
+
                     <p class="text-xs text-muted-foreground">
-                      {{ p.sku }} · {{ brl(p.preco ?? p.sale_price) }}
+                      {{ p.sku }} ·
+                      {{ brl(p.preco ?? p.sale_price) }}
                     </p>
                   </div>
+
                   <div class="flex shrink-0 items-center gap-2">
                     <StatusPill
                       :tom="
@@ -809,6 +1125,7 @@ async function salvar() {
                       @click="abrirProdutoParaReporEstoque(p)"
                     >
                       <Pencil class="size-3.5 mr-1" />
+
                       Repor estoque
                     </Button>
 
@@ -819,12 +1136,18 @@ async function salvar() {
                       class="cursor-pointer"
                       @click="adicionar(p.id)"
                     >
-                      <Plus class="size-4" /> Adicionar
+                      <Plus class="size-4" />
+
+                      Adicionar
                     </Button>
                   </div>
                 </li>
               </ul>
             </section>
+
+            <!-- ======================================================= -->
+            <!-- ITENS -->
+            <!-- ======================================================= -->
 
             <section class="space-y-3 border-t border-border pt-6">
               <h3 class="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -836,6 +1159,7 @@ async function salvar() {
                 class="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-4 text-sm text-muted-foreground"
               >
                 <Loader2 class="size-4 animate-spin" />
+
                 Carregando itens desta venda…
               </div>
 
@@ -850,9 +1174,16 @@ async function salvar() {
                   <li v-for="i in itens" :key="i.id" class="space-y-2 bg-surface px-3 py-2.5">
                     <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                       <div class="min-w-0">
-                        <p class="truncate text-sm font-medium">{{ i.nome }}</p>
-                        <p class="text-xs text-muted-foreground">{{ brl(i.valor) }} cada</p>
+                        <p class="truncate text-sm font-medium">
+                          {{ i.nome }}
+                        </p>
+
+                        <p class="text-xs text-muted-foreground">
+                          {{ brl(i.valor) }}
+                          cada
+                        </p>
                       </div>
+
                       <Button
                         type="button"
                         variant="ghost"
@@ -864,6 +1195,7 @@ async function salvar() {
                         <Trash2 class="size-4 text-destructive" />
                       </Button>
                     </div>
+
                     <div class="flex items-center gap-2">
                       <Button
                         type="button"
@@ -875,7 +1207,11 @@ async function salvar() {
                       >
                         <Minus class="size-3.5" />
                       </Button>
-                      <span class="w-8 text-center text-sm font-semibold">{{ i.qtd }}</span>
+
+                      <span class="w-8 text-center text-sm font-semibold">
+                        {{ i.qtd }}
+                      </span>
+
                       <Button
                         type="button"
                         variant="outline"
@@ -887,20 +1223,30 @@ async function salvar() {
                       >
                         <Plus class="size-3.5" />
                       </Button>
-                      <span class="ml-auto text-sm font-semibold">{{ brl(i.qtd * i.valor) }}</span>
+
+                      <span class="ml-auto text-sm font-semibold">
+                        {{ brl(i.qtd * i.valor) }}
+                      </span>
                     </div>
+
                     <p
                       v-if="i.qtd >= i.estoque"
                       class="flex items-center gap-1.5 text-xs text-warning"
                     >
                       <TriangleAlert class="size-3.5" aria-hidden="true" />
-                      Limite do estoque disponível ({{ i.estoque }} un.).
+
+                      Limite do estoque disponível ({{ i.estoque }}
+                      un.).
                     </p>
                   </li>
                 </ul>
               </div>
             </section>
           </div>
+
+          <!-- ========================================================= -->
+          <!-- COLUNA DIREITA -->
+          <!-- ========================================================= -->
 
           <div
             class="space-y-4 overflow-y-auto border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0"
@@ -910,14 +1256,19 @@ async function salvar() {
                 4. Pagamento e Ajustes
               </h3>
 
+              <!-- DESCONTO -->
+
               <div>
-                <label class="mb-1.5 block text-sm font-medium text-foreground">Desconto</label>
+                <label class="mb-1.5 block text-sm font-medium text-foreground"> Desconto </label>
+
                 <div class="grid grid-cols-2 gap-2">
                   <div class="relative">
                     <span
                       class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
-                      >R$</span
                     >
+                      R$
+                    </span>
+
                     <input
                       id="desconto"
                       :value="descontoValorExibido"
@@ -929,6 +1280,7 @@ async function salvar() {
                       @input="onInputDescontoValor"
                     />
                   </div>
+
                   <div class="relative">
                     <input
                       id="desconto-percentual"
@@ -940,22 +1292,29 @@ async function salvar() {
                       class="h-10 w-full cursor-text rounded-md border border-input bg-surface pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       @input="descontoPercentual.onInput"
                     />
+
                     <span
                       class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
-                      >%</span
                     >
+                      %
+                    </span>
                   </div>
                 </div>
               </div>
 
+              <!-- ACRÉSCIMO -->
+
               <div>
-                <label class="mb-1.5 block text-sm font-medium text-foreground">Acréscimo</label>
+                <label class="mb-1.5 block text-sm font-medium text-foreground"> Acréscimo </label>
+
                 <div class="grid grid-cols-2 gap-2">
                   <div class="relative">
                     <span
                       class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
-                      >R$</span
                     >
+                      R$
+                    </span>
+
                     <input
                       id="acrescimo"
                       :value="acrescimoValorExibido"
@@ -967,6 +1326,7 @@ async function salvar() {
                       @input="acrescimo.onInput"
                     />
                   </div>
+
                   <div class="relative">
                     <input
                       id="acrescimo-percentual"
@@ -978,93 +1338,133 @@ async function salvar() {
                       class="h-10 w-full cursor-text rounded-md border border-input bg-surface pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       @input="acrescimoPercentual.onInput"
                     />
+
                     <span
                       class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
-                      >%</span
                     >
+                      %
+                    </span>
                   </div>
                 </div>
               </div>
 
+              <!-- PAGAMENTO -->
+
               <div>
                 <label for="pagamento" class="mb-1.5 block text-sm font-medium text-foreground">
-                  Forma de pagamento <span class="text-destructive">*</span>
+                  Forma de pagamento
+                  <span class="text-destructive"> * </span>
                 </label>
+
                 <Select v-model="pagamento">
                   <SelectTrigger id="pagamento" class="h-10 w-full cursor-pointer bg-surface">
                     <SelectValue placeholder="Como o cliente vai pagar?" />
                   </SelectTrigger>
+
                   <SelectContent>
-                    <SelectItem value="Dinheiro" class="cursor-pointer">Dinheiro</SelectItem>
-                    <SelectItem value="Pix" class="cursor-pointer">Pix</SelectItem>
-                    <SelectItem value="Cartão de débito" class="cursor-pointer"
-                      >Cartão de débito</SelectItem
-                    >
-                    <SelectItem value="Cartão de crédito" class="cursor-pointer"
-                      >Cartão de crédito</SelectItem
-                    >
+                    <SelectItem value="Dinheiro" class="cursor-pointer"> Dinheiro </SelectItem>
+
+                    <SelectItem value="Pix" class="cursor-pointer"> Pix </SelectItem>
+
+                    <SelectItem value="Cartão de débito" class="cursor-pointer">
+                      Cartão de débito
+                    </SelectItem>
+
+                    <SelectItem value="Cartão de crédito" class="cursor-pointer">
+                      Cartão de crédito
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
+              <!-- RESUMO -->
+
               <div class="space-y-1 rounded-md border border-input px-3 py-2.5 text-sm">
                 <div class="flex justify-between text-muted-foreground">
-                  <span>Subtotal</span>
-                  <span>{{ brl(subtotal) }}</span>
+                  <span> Subtotal </span>
+
+                  <span>
+                    {{ brl(subtotal) }}
+                  </span>
                 </div>
+
                 <div
                   v-if="valorDescontoAplicado > 0"
                   class="flex justify-between text-muted-foreground"
                 >
                   <span>
                     Desconto
+
                     <template v-if="descontoPercentualPreenchido">
-                      ({{ descontoPercentual.formatted.value }}%)</template
-                    >
+                      ({{ descontoPercentual.formatted.value }}%)
+                    </template>
                   </span>
-                  <span>- {{ brl(valorDescontoAplicado) }}</span>
+
+                  <span>
+                    -
+                    {{ brl(valorDescontoAplicado) }}
+                  </span>
                 </div>
+
                 <div
                   v-if="valorAcrescimoAplicado > 0"
                   class="flex justify-between text-muted-foreground"
                 >
                   <span>
                     Acréscimo
+
                     <template v-if="acrescimoPercentualPreenchido">
-                      ({{ acrescimoPercentual.formatted.value }}%)</template
-                    >
+                      ({{ acrescimoPercentual.formatted.value }}%)
+                    </template>
                   </span>
-                  <span>+ {{ brl(valorAcrescimoAplicado) }}</span>
+
+                  <span>
+                    +
+                    {{ brl(valorAcrescimoAplicado) }}
+                  </span>
                 </div>
+
                 <div
                   class="flex items-center justify-between border-t border-border pt-1.5 font-medium"
                 >
-                  <span>Total a pagar</span>
-                  <span class="text-base text-primary">{{ brl(total) }}</span>
+                  <span> Total a pagar </span>
+
+                  <span class="text-base text-primary">
+                    {{ brl(total) }}
+                  </span>
                 </div>
               </div>
             </section>
           </div>
         </div>
 
+        <!-- =========================================================== -->
+        <!-- FOOTER -->
+        <!-- =========================================================== -->
+
         <DialogFooter
           class="flex-col items-stretch gap-2 border-t border-border pt-5 shrink-0 sm:flex-row sm:items-center"
         >
           <p class="text-xs text-muted-foreground sm:mr-auto">
-            Campos com <span class="text-destructive">*</span> são obrigatórios. Você será avisado
-            ao finalizar se algo faltar.
+            Campos com
+            <span class="text-destructive"> * </span>
+            são obrigatórios. Você será avisado ao finalizar se algo faltar.
           </p>
+
           <div class="flex gap-2 sm:ml-auto">
-            <Button type="button" variant="outline" class="cursor-pointer" @click="fechar"
-              >Cancelar</Button
-            >
+            <Button type="button" variant="outline" class="cursor-pointer" @click="fechar">
+              Cancelar
+            </Button>
+
             <Button
               type="submit"
               :disabled="isCreating || isUpdating || carregandoItens"
               class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Loader2 v-if="isCreating || isUpdating" class="size-4 animate-spin" />
+
               <ArrowUpRight v-else class="size-4" />
+
               {{
                 isCreating || isUpdating
                   ? 'Salvando…'
@@ -1079,6 +1479,10 @@ async function salvar() {
     </DialogContent>
   </Dialog>
 
+  <!-- =============================================================== -->
+  <!-- MODAL NOVA PESSOA -->
+  <!-- =============================================================== -->
+
   <NewPerson
     v-model:open="pessoaModalAberto"
     :pessoa="null"
@@ -1087,6 +1491,10 @@ async function salvar() {
     :ao-atualizar-parcial="atualizarParcialPessoa"
     @created="pessoaCriada"
   />
+
+  <!-- =============================================================== -->
+  <!-- MODAL NOVO PRODUTO -->
+  <!-- =============================================================== -->
 
   <NewProduct
     v-model:open="produtoModalAberto"
