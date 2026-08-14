@@ -528,17 +528,10 @@ const doughnutOptions = {
 
         <button
           @click="handleRefresh"
-          class="bg-[#10b981] hover:bg-[#059669] text-black font-semibold text-xs px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer"
+          class="bg-[#10b981] hover:bg-[#059669] text-black text-xs px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer"
         >
           <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': salesQuery.isFetching.value }" />
           <span>Atualizar</span>
-        </button>
-
-        <button
-          class="bg-[#18181b] hover:bg-[#27272a] border border-[#27272a] text-white font-medium text-xs px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer"
-        >
-          <Download class="w-3.5 h-3.5 text-[#a1a1aa]" />
-          <span>Exportar</span>
         </button>
       </div>
     </div>
