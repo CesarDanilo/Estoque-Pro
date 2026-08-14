@@ -135,10 +135,6 @@ function limpar() {
   pagina.value = 1
 }
 
-function exportar() {
-  sucesso('Exportação concluída', 'Lista exportada em CSV.')
-}
-
 function abrirModal() {
   pessoaEditando.value = null
   modalAberto.value = true
@@ -205,9 +201,6 @@ async function confirmarExclusao() {
     :trilha="[{ titulo: 'Gestão' }, { titulo: 'Pessoas' }]"
   >
     <template #acoes>
-      <Button variant="outline" @click="exportar" class="cursor-pointer">
-        <Download class="size-4" /> Exportar
-      </Button>
       <Button
         class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
         @click="abrirModal"
