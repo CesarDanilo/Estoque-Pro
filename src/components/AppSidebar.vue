@@ -112,11 +112,9 @@ onMounted(() => {
   >
     <!-- Header -->
     <div class="flex min-w-0 items-center gap-2.5 border-b px-3 py-3 h-16">
-      <div
-        class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground"
-      >
-        <Boxes class="size-5" aria-hidden="true" />
-      </div>
+      <span class="grid size-9 place-items-center rounded-lg bg-emerald-500/15 text-emerald-400">
+        <Package class="size-5" aria-hidden="true" />
+      </span>
       <div v-if="!sidebarCollapsed" class="min-w-0">
         <p class="truncate text-sm font-semibold">Estoque Pro</p>
         <p class="truncate text-xs text-muted-foreground">Comércio Modelo Ltda</p>
