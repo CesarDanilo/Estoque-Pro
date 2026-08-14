@@ -2,6 +2,9 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Building2,
   Loader2,
   MoreHorizontal,
@@ -16,6 +19,13 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -56,7 +66,23 @@ const NOME_BUSCA_MAX = 60
 const busca = ref('')
 const pagina = ref(1)
 
-watch(busca, () => {
+// ---- Filtro de Situação ----
+const filtroStatus = ref('todos') // 'todos' | 'ativos' | 'inativos'
+
+// ---- Ordenação por Nome (Fornecedor) ----
+const ordemNomeDirecao = ref(null) // null | 'asc' | 'desc'
+
+function alternarOrdemNome() {
+  if (ordemNomeDirecao.value === 'asc') {
+    ordemNomeDirecao.value = 'desc'
+  } else if (ordemNomeDirecao.value === 'desc') {
+    ordemNomeDirecao.value = null
+  } else {
+    ordemNomeDirecao.value = 'asc'
+  }
+}
+
+watch([busca, filtroStatus], () => {
   pagina.value = 1
 })
 
@@ -96,12 +122,43 @@ const {
   isLoading,
   isError,
 } = useQuery({
-  queryKey: ['suppliers', busca, pagina],
-  queryFn: () => supplierService.getAll({ search: busca.value, page: pagina.value }),
+  queryKey: ['suppliers', busca, pagina, filtroStatus],
+  queryFn: () =>
+    supplierService.getAll({
+      search: busca.value,
+      page: pagina.value,
+      active: filtroStatus.value === 'todos' ? undefined : filtroStatus.value === 'ativos',
+    }),
   staleTime: 1000 * 60 * 5,
 })
 
-const listaFornecedores = computed(() => respostaFornecedores.value?.data || [])
+const listaFornecedoresBruta = computed(() => respostaFornecedores.value?.data || [])
+
+// Filtro de situação aplicado também no cliente, como salvaguarda caso o
+// backend ainda não filtre pelo parâmetro `active` (ex.: endpoint legado).
+// Se o backend já filtra corretamente, este filtro simplesmente não altera nada.
+const listaFornecedores = computed(() => {
+  let resultado = [...listaFornecedoresBruta.value]
+
+  if (filtroStatus.value === 'ativos') {
+    resultado = resultado.filter((f) => f.active)
+  } else if (filtroStatus.value === 'inativos') {
+    resultado = resultado.filter((f) => !f.active)
+  }
+
+  if (ordemNomeDirecao.value) {
+    resultado.sort((a, b) => {
+      const nomeA = a.name || ''
+      const nomeB = b.name || ''
+      return ordemNomeDirecao.value === 'asc'
+        ? nomeA.localeCompare(nomeB, 'pt-BR', { sensitivity: 'base' })
+        : nomeB.localeCompare(nomeA, 'pt-BR', { sensitivity: 'base' })
+    })
+  }
+
+  return resultado
+})
+
 const metaFornecedores = computed(() => ({
   paginaAtual: respostaFornecedores.value?.current_page || 1,
   totalPaginas: respostaFornecedores.value?.last_page || 1,
@@ -295,7 +352,9 @@ function confirmarExclusao() {
       </div>
 
       <Section>
-        <div class="flex items-center justify-between gap-4 border-b border-border p-4 md:p-5">
+        <div
+          class="flex flex-col gap-3 border-b border-border p-4 md:flex-row md:items-center md:justify-between md:p-5"
+        >
           <div class="relative w-full md:max-w-sm">
             <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -313,13 +372,26 @@ function confirmarExclusao() {
             </span>
           </div>
 
-          <div
-            v-if="listaFornecedores?.length > 0"
-            class="hidden text-xs font-medium text-muted-foreground sm:block"
-          >
-            Exibindo
-            <span class="font-semibold text-foreground">{{ listaFornecedores.length }}</span>
-            registros
+          <div class="flex flex-wrap items-center gap-2">
+            <Select v-model="filtroStatus">
+              <SelectTrigger class="h-10 w-[180px] cursor-pointer bg-surface" aria-label="Situação">
+                <SelectValue placeholder="Selecione a situação" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos" class="cursor-pointer">Todas as situações</SelectItem>
+                <SelectItem value="ativos" class="cursor-pointer">Apenas Ativos</SelectItem>
+                <SelectItem value="inativos" class="cursor-pointer">Apenas Inativos</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div
+              v-if="listaFornecedores?.length > 0"
+              class="hidden text-xs font-medium text-muted-foreground sm:block ml-2"
+            >
+              Exibindo
+              <span class="font-semibold text-foreground">{{ listaFornecedores.length }}</span>
+              registros
+            </div>
           </div>
         </div>
 
@@ -406,7 +478,17 @@ function confirmarExclusao() {
             <table class="w-full text-sm">
               <thead class="text-xs text-muted-foreground">
                 <tr class="border-b border-border text-left">
-                  <th class="px-5 py-3 font-medium">Fornecedor</th>
+                  <th
+                    class="px-5 py-3 font-medium cursor-pointer select-none hover:text-foreground transition-colors"
+                    @click="alternarOrdemNome"
+                  >
+                    <div class="flex items-center gap-1.5">
+                      <span>Fornecedor</span>
+                      <ArrowUp v-if="ordemNomeDirecao === 'asc'" class="size-3.5" />
+                      <ArrowDown v-else-if="ordemNomeDirecao === 'desc'" class="size-3.5" />
+                      <ArrowUpDown v-else class="size-3.5 opacity-40" />
+                    </div>
+                  </th>
                   <th class="px-4 py-3 font-medium">CNPJ / CPF</th>
                   <th class="px-4 py-3 font-medium">Telefone</th>
                   <th class="px-4 py-3 font-medium">Cidade/UF</th>
