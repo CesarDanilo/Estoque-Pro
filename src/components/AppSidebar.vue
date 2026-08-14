@@ -16,11 +16,13 @@ import {
   Layers,
   Boxes,
   LogOut,
+  Trash2,
 } from 'lucide-vue-next'
 
 import { useUiStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
 import { useFeedback } from '@/composables/useFeedBack'
+import { Trash } from '@lucide/vue'
 
 // Estrutura de um item de navegação:
 // { titulo, url, icone, exato? }
@@ -56,6 +58,7 @@ const secoes = [
     label: 'Análise',
     itens: [
       { titulo: 'Relatórios', url: '/relatorios', icone: BarChart3 },
+      { titulo: 'Lixeira', url: '/lixeira', icone: Trash2 },
       //{ titulo: 'Configurações', url: '/configuracoes', icone: Settings },
     ],
   },

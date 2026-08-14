@@ -187,7 +187,26 @@ async function confirmarExclusao() {
     pagina.value = 1
     recarregar()
   } catch (e) {
-    erroFeedback('Erro ao excluir', e.response?.data?.message || 'Tente novamente.')
+    const status = e.response?.status
+    const mensageria = e.response?.data?.message || e.response?.data?.error || e.message || ''
+
+    // Detecta violação de FK ou status 409/422 de vínculo
+    const ehVinculoEstoque =
+      status === 409 ||
+      status === 422 ||
+      mensageria.includes('23503') ||
+      mensageria.includes('foreign key') ||
+      mensageria.includes('purchases') ||
+      mensageria.includes('sales')
+
+    if (ehVinculoEstoque) {
+      erroFeedback(
+        'Não é possível excluir',
+        `A pessoa "${alvo.nome}" possui vendas ou compras vinculadas ao histórico e não pode ser removida.`,
+      )
+    } else {
+      erroFeedback('Erro ao excluir', mensageria || 'Tente novamente.')
+    }
   } finally {
     excluindo.value = false
   }

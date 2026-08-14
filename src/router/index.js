@@ -53,7 +53,12 @@ const router = createRouter({
       name: 'relatorios',
       component: () => import('@/views/ReportsView.vue'),
     },
-    // Rotas públicas (não exigem login) ficam com meta.public: true
+    {
+      path: '/lixeira',
+      name: 'trash',
+      // Verifique se o caminho do import está exatamente assim:
+      component: () => import('@/views/TrashView.vue'),
+    },
     {
       path: '/login',
       name: 'login',
