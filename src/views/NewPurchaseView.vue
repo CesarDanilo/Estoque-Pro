@@ -11,7 +11,12 @@ import FieldLabel from '@/components/ui-kit/FieldLabel.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 
 // Modais On-the-Fly
-import NewSupplier from '@/components/modal/supplier/NewSupplier.vue'
+// 🔴 TROCADO: não usamos mais o modal específico de fornecedor (NewSupplier.vue).
+// Agora chamamos o mesmo modal unificado de Pessoa usado no módulo de
+// clientes/pessoas, no NewProduct.vue e na página de Fornecedores, já
+// pré-configurado como fornecedor pessoa jurídica (ver props na tag
+// <PersonModal> no template).
+import PersonModal from '@/components/modal/person/NewPerson.vue'
 import ProductModal from '@/components/modal/product/NewProduct.vue'
 
 import { Button } from '@/components/ui/button'
@@ -136,6 +141,49 @@ async function fornecedorCriado(fornecedor) {
     fornecedorId.value = String(novoId)
   }
   sucesso('Fornecedor cadastrado', `${nome} foi selecionado automaticamente nesta compra.`)
+}
+
+// ---- Tradução do payload do PersonModal para o formato da API de Fornecedor ----
+// Mesmo mapeamento usado no NewProduct.vue — o PersonModal fala a "língua" de
+// Pessoa (nome, documento, nascimento...) e o endpoint de fornecedores espera
+// os campos no formato da tabela suppliers (name, document, birth_date...).
+const CAMPO_PESSOA_PARA_FORNECEDOR = {
+  categoria: 'category',
+  type: 'type',
+  nome: 'name',
+  documento: 'document',
+  nomeFantasia: 'trade_name',
+  inscricaoEstadual: 'state_registration',
+  pessoaContato: 'contact_person',
+  genero: 'gender',
+  nascimento: 'birth_date',
+  telefone: 'phone',
+  email: 'email',
+  cep: 'zip_code',
+  logradouro: 'street',
+  numero: 'number',
+  complemento: 'complement',
+  bairro: 'neighborhood',
+  cidade: 'city',
+  uf: 'state',
+  ativo: 'active',
+}
+
+function traduzirPayloadDePessoaParaFornecedor(payload) {
+  const traduzido = {}
+  for (const [campoFront, valor] of Object.entries(payload)) {
+    const chaveApi = CAMPO_PESSOA_PARA_FORNECEDOR[campoFront] ?? campoFront
+    traduzido[chaveApi] = valor
+  }
+  return traduzido
+}
+
+async function criarFornecedorViaPersonModal(payload) {
+  return supplierService.create(traduzirPayloadDePessoaParaFornecedor(payload))
+}
+
+async function atualizarFornecedorViaPersonModal(id, payload) {
+  return supplierService.update(id, traduzirPayloadDePessoaParaFornecedor(payload))
 }
 
 // ---- Grupos (API) ----
@@ -637,10 +685,19 @@ async function finalizar() {
     </Section>
   </div>
 
-  <NewSupplier
+  <!-- 🔴 TROCADO: mesmo padrão da página de Fornecedores e do NewProduct.vue —
+       modal unificado de Pessoa, já nascendo como categoria "Fornecedor" (o
+       que trava o Tipo automaticamente em "Pessoa jurídica" dentro do próprio
+       NewPerson.vue). Sem prop `pessoa`, então sempre abre em modo criação. -->
+  <PersonModal
     v-model:open="modalFornecedorAberto"
+    :ao-criar="criarFornecedorViaPersonModal"
+    :ao-atualizar="atualizarFornecedorViaPersonModal"
+    :ao-atualizar-parcial="atualizarFornecedorViaPersonModal"
+    categoria-padrao="supplier"
+    :categoria-fixa="true"
+    titulo-criacao="Novo fornecedor"
     @created="fornecedorCriado"
-    @salvo="fornecedorCriado"
   />
 
   <ProductModal
