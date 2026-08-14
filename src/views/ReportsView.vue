@@ -1,9 +1,8 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import {
   RefreshCw,
-  Download,
   TrendingUp,
   ShoppingCart,
   Package,
@@ -11,6 +10,8 @@ import {
   Search,
   Calendar as CalendarIcon,
   X,
+  Sun,
+  Moon,
 } from 'lucide-vue-next'
 
 // Vue Chart.js e Chart.js
@@ -36,7 +37,6 @@ import {
   usePeopleReport,
 } from '@/composables/useReports'
 
-// Registrando módulos do Chart.js
 ChartJS.register(
   Title,
   Tooltip,
@@ -52,10 +52,39 @@ ChartJS.register(
 
 const queryClient = useQueryClient()
 
-// Estados principais
-const activeTab = ref('vendas')
+// --- CONTROLE DE TEMA (DARK / LIGHT) ---
+const isDark = ref(false)
 
-// --- ESTADOS DO FILTRO DE DATA AVANÇADO ---
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  if (isDark.value) {
+    document.documentElement.classList.add('dark')
+    localStorage.setItem('theme', 'dark')
+  } else {
+    document.documentElement.classList.remove('dark')
+    localStorage.setItem('theme', 'light')
+  }
+}
+
+// Detecta preferência salva ou do sistema ao montar
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+
+  const savedTheme = localStorage.getItem('theme')
+  if (
+    savedTheme === 'dark' ||
+    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  ) {
+    isDark.value = true
+    document.documentElement.classList.add('dark')
+  } else {
+    isDark.value = false
+    document.documentElement.classList.remove('dark')
+  }
+})
+
+// --- ESTADOS E FILTROS ---
+const activeTab = ref('vendas')
 const filtroDataAberto = ref(false)
 const dataFiltroRef = ref(null)
 
@@ -72,16 +101,11 @@ const presetsData = [
   { valor: 'mes_anterior', rotulo: 'Mês anterior' },
 ]
 
-// Fechar o popover ao clicar fora
 const handleClickOutside = (event) => {
   if (dataFiltroRef.value && !dataFiltroRef.value.contains(event.target)) {
     filtroDataAberto.value = false
   }
 }
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
@@ -106,7 +130,6 @@ const limparFiltroData = () => {
   filtroDataAberto.value = false
 }
 
-// Rótulo dinâmico exibido no botão do filtro
 const rotuloFiltroData = computed(() => {
   if (tipoData.value === 'personalizado_dia' && dataUnica.value) {
     return `Dia: ${dataUnica.value.split('-').reverse().join('/')}`
@@ -120,7 +143,6 @@ const rotuloFiltroData = computed(() => {
   return presetEncontrado ? presetEncontrado.rotulo : 'Filtrar período'
 })
 
-// Objeto unificado enviado para as queries (compatível com o backend)
 const selectedPeriod = computed(() => {
   if (tipoData.value === 'personalizado_dia') {
     return { period: 'personalizado', tipo: 'dia', data: dataUnica.value }
@@ -136,17 +158,14 @@ const selectedPeriod = computed(() => {
   return { period: tipoData.value }
 })
 
-// Filtros internos
 const searchProductSales = ref('')
 const searchProductPurchases = ref('')
 
-// Queries do TanStack Query
 const salesQuery = useSalesReport(selectedPeriod)
 const purchasesQuery = usePurchasesReport(selectedPeriod)
 const productsQuery = useProductsReport()
 const peopleQuery = usePeopleReport(selectedPeriod)
 
-// Helpers de formatação
 const formatCurrency = (val) => {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -158,7 +177,6 @@ const handleRefresh = () => {
   queryClient.invalidateQueries({ queryKey: ['reports'] })
 }
 
-// Filtros de busca
 const filteredTopProducts = computed(() => {
   const list = salesQuery.data.value?.produtos_mais_vendidos || []
   if (!searchProductSales.value) return list
@@ -174,8 +192,12 @@ const filteredReplenishProducts = computed(() => {
 })
 
 // ==========================================
-// CONFIGURAÇÕES DOS GRÁFICOS (CHART.JS)
+// CONFIGURAÇÕES DOS GRÁFICOS (DINÂMICAS)
 // ==========================================
+
+// Cores dinâmicas dos gráficos baseadas no tema ativo
+const chartTextColor = computed(() => (isDark.value ? '#a1a1aa' : '#71717a'))
+const chartGridColor = computed(() => (isDark.value ? '#27272a' : '#e4e4e7'))
 
 const salesLineChartData = computed(() => {
   const rawData = salesQuery.data.value?.vendas_por_dia?.chart || []
@@ -191,15 +213,18 @@ const salesLineChartData = computed(() => {
           const { ctx, chartArea } = chart
           if (!chartArea) return 'rgba(16, 185, 129, 0.2)'
           const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
-          gradient.addColorStop(0, 'rgba(16, 185, 129, 0.35)')
-          gradient.addColorStop(1, 'rgba(16, 185, 129, 0.02)')
+          gradient.addColorStop(
+            0,
+            isDark.value ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.2)',
+          )
+          gradient.addColorStop(1, 'rgba(16, 185, 129, 0.01)')
           return gradient
         },
         fill: true,
         tension: 0.4,
         borderWidth: 2.5,
         pointBackgroundColor: '#10b981',
-        pointBorderColor: '#09090b',
+        pointBorderColor: isDark.value ? '#09090b' : '#ffffff',
         pointBorderWidth: 2,
         pointRadius: 4,
         pointHoverRadius: 6,
@@ -208,16 +233,16 @@ const salesLineChartData = computed(() => {
   }
 })
 
-const lineChartOptions = {
+const lineChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
     legend: { display: false },
     tooltip: {
-      backgroundColor: '#18181b',
-      titleColor: '#ffffff',
+      backgroundColor: isDark.value ? '#18181b' : '#ffffff',
+      titleColor: isDark.value ? '#ffffff' : '#09090b',
       bodyColor: '#10b981',
-      borderColor: '#27272a',
+      borderColor: isDark.value ? '#27272a' : '#e4e4e7',
       borderWidth: 1,
       padding: 10,
       displayColors: false,
@@ -228,19 +253,19 @@ const lineChartOptions = {
   },
   scales: {
     x: {
-      grid: { color: '#27272a33' },
-      ticks: { color: '#a1a1aa', font: { size: 11 } },
+      grid: { color: chartGridColor.value },
+      ticks: { color: chartTextColor.value, font: { size: 11 } },
     },
     y: {
-      grid: { color: '#27272a88' },
+      grid: { color: chartGridColor.value },
       ticks: {
-        color: '#a1a1aa',
+        color: chartTextColor.value,
         font: { size: 11 },
         callback: (value) => (value >= 1000 ? `${value / 1000}k` : value),
       },
     },
   },
-}
+}))
 
 const salesByGroupChartData = computed(() => {
   const rawData = salesQuery.data.value?.vendas_por_grupo || []
@@ -258,15 +283,18 @@ const salesByGroupChartData = computed(() => {
   }
 })
 
-const verticalBarOptions = {
+const verticalBarOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: { legend: { display: false } },
   scales: {
-    x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 11 } } },
-    y: { grid: { color: '#27272a' }, ticks: { color: '#a1a1aa', font: { size: 11 } } },
+    x: { grid: { display: false }, ticks: { color: chartTextColor.value, font: { size: 11 } } },
+    y: {
+      grid: { color: chartGridColor.value },
+      ticks: { color: chartTextColor.value, font: { size: 11 } },
+    },
   },
-}
+}))
 
 const purchasesSupplierChartData = computed(() => {
   const rawData = purchasesQuery.data.value?.compras_por_fornecedor || []
@@ -284,16 +312,19 @@ const purchasesSupplierChartData = computed(() => {
   }
 })
 
-const horizontalBarOptions = {
+const horizontalBarOptions = computed(() => ({
   indexAxis: 'y',
   responsive: true,
   maintainAspectRatio: false,
   plugins: { legend: { display: false } },
   scales: {
-    x: { grid: { color: '#27272a' }, ticks: { color: '#a1a1aa', font: { size: 11 } } },
-    y: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 11 } } },
+    x: {
+      grid: { color: chartGridColor.value },
+      ticks: { color: chartTextColor.value, font: { size: 11 } },
+    },
+    y: { grid: { display: false }, ticks: { color: chartTextColor.value, font: { size: 11 } } },
   },
-}
+}))
 
 const productsGroupChartData = computed(() => {
   const rawData = productsQuery.data.value?.produtos_por_grupo || []
@@ -367,26 +398,37 @@ const peopleAgeChartData = computed(() => {
   }
 })
 
-const doughnutOptions = {
+const doughnutOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
     legend: {
       position: 'right',
-      labels: { color: '#f4f4f5', font: { size: 11 }, boxWidth: 12, padding: 12 },
+      labels: {
+        color: isDark.value ? '#f4f4f5' : '#09090b',
+        font: { size: 11 },
+        boxWidth: 12,
+        padding: 12,
+      },
     },
   },
   cutout: '70%',
-}
+}))
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#09090b] text-[#f4f4f5] p-6 font-sans">
+  <div
+    class="min-h-screen bg-[#f8fafc] dark:bg-[#09090b] text-[#09090b] dark:text-[#f4f4f5] p-6 font-sans transition-colors duration-200"
+  >
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
       <div>
-        <p class="text-xs text-[#a1a1aa] font-medium tracking-wide">Análise / Relatórios</p>
-        <h1 class="text-2xl font-bold tracking-tight text-white mt-1">Relatórios</h1>
-        <p class="text-sm text-[#a1a1aa] mt-0.5">
+        <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium tracking-wide">
+          Análise / Relatórios
+        </p>
+        <h1 class="text-2xl font-bold tracking-tight text-[#09090b] dark:text-white mt-1">
+          Relatórios
+        </h1>
+        <p class="text-sm text-[#71717a] dark:text-[#a1a1aa] mt-0.5">
           Escolha um tema e o período para analisar os resultados do negócio.
         </p>
       </div>
@@ -395,19 +437,19 @@ const doughnutOptions = {
         <div ref="dataFiltroRef" class="relative">
           <button
             type="button"
-            class="flex h-9 w-44 cursor-pointer items-center gap-2 rounded-lg border border-[#27272a] bg-[#18181b] px-3 text-xs font-medium transition-colors hover:bg-[#27272a]/50"
+            class="flex h-9 w-44 cursor-pointer items-center gap-2 rounded-lg border border-[#e4e4e7] dark:border-[#27272a] bg-white dark:bg-[#18181b] px-3 text-xs font-medium shadow-sm transition-colors hover:bg-[#f4f4f5] dark:hover:bg-[#27272a]/50"
             :class="
               !['7d', '30d', '90d'].includes(tipoData)
-                ? 'border-emerald-500/50 text-white'
-                : 'text-[#a1a1aa]'
+                ? 'border-emerald-500 text-emerald-700 dark:text-emerald-400 font-semibold'
+                : 'text-[#71717a] dark:text-[#a1a1aa]'
             "
             @click="filtroDataAberto = !filtroDataAberto"
           >
-            <CalendarIcon class="size-3.5 shrink-0 text-[#a1a1aa]" />
+            <CalendarIcon class="size-3.5 shrink-0 text-[#71717a] dark:text-[#a1a1aa]" />
             <span class="truncate">{{ rotuloFiltroData }}</span>
             <X
               v-if="!['7d', '30d', '90d'].includes(tipoData)"
-              class="ml-auto size-3 shrink-0 text-[#a1a1aa] transition-colors hover:text-white"
+              class="ml-auto size-3 shrink-0 text-[#71717a] dark:text-[#a1a1aa] transition-colors hover:text-[#09090b] dark:hover:text-white"
               @click.stop="limparFiltroData"
             />
           </button>
@@ -422,9 +464,13 @@ const doughnutOptions = {
           >
             <div
               v-if="filtroDataAberto"
-              class="absolute right-0 top-[calc(100%+6px)] z-50 w-72 rounded-xl border border-[#27272a] bg-[#18181b] p-3 shadow-xl"
+              class="absolute right-0 top-[calc(100%+6px)] z-50 w-72 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] bg-white dark:bg-[#18181b] p-3 shadow-lg"
             >
-              <p class="mb-2 text-[11px] font-semibold uppercase text-[#a1a1aa]">Atalhos</p>
+              <p
+                class="mb-2 text-[11px] font-semibold uppercase text-[#71717a] dark:text-[#a1a1aa]"
+              >
+                Atalhos
+              </p>
               <div class="mb-3 grid grid-cols-2 gap-1.5">
                 <button
                   v-for="preset in presetsData"
@@ -433,8 +479,8 @@ const doughnutOptions = {
                   class="cursor-pointer rounded-lg border px-2.5 py-1.5 text-left text-xs font-medium transition-colors"
                   :class="
                     tipoData === preset.valor
-                      ? 'border-emerald-500/50 bg-emerald-500/10 text-white font-semibold'
-                      : 'border-transparent bg-[#09090b] text-[#a1a1aa] hover:text-white'
+                      ? 'border-emerald-500/50 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-semibold'
+                      : 'border-transparent bg-[#f4f4f5] dark:bg-[#09090b] text-[#71717a] dark:text-[#a1a1aa] hover:text-[#09090b] dark:hover:text-white'
                   "
                   @click="selecionarPreset(preset.valor)"
                 >
@@ -442,17 +488,23 @@ const doughnutOptions = {
                 </button>
               </div>
 
-              <div class="border-t border-[#27272a] pt-3">
-                <p class="mb-2 text-[11px] font-semibold uppercase text-[#a1a1aa]">Personalizado</p>
+              <div class="border-t border-[#e4e4e7] dark:border-[#27272a] pt-3">
+                <p
+                  class="mb-2 text-[11px] font-semibold uppercase text-[#71717a] dark:text-[#a1a1aa]"
+                >
+                  Personalizado
+                </p>
 
-                <div class="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-[#09090b] p-1">
+                <div
+                  class="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-[#f4f4f5] dark:bg-[#09090b] p-1"
+                >
                   <button
                     type="button"
                     class="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
                     :class="
                       tipoData === 'personalizado_dia'
-                        ? 'bg-[#18181b] text-white shadow-sm font-semibold'
-                        : 'text-[#a1a1aa] hover:text-white'
+                        ? 'bg-white dark:bg-[#18181b] text-[#09090b] dark:text-white shadow-sm font-semibold'
+                        : 'text-[#71717a] dark:text-[#a1a1aa] hover:text-[#09090b] dark:hover:text-white'
                     "
                     @click="selecionarModoPersonalizado('personalizado_dia')"
                   >
@@ -463,8 +515,8 @@ const doughnutOptions = {
                     class="cursor-pointer rounded-md px-2 py-1.5 text-xs font-medium transition-colors"
                     :class="
                       tipoData === 'personalizado_periodo'
-                        ? 'bg-[#18181b] text-white shadow-sm font-semibold'
-                        : 'text-[#a1a1aa] hover:text-white'
+                        ? 'bg-white dark:bg-[#18181b] text-[#09090b] dark:text-white shadow-sm font-semibold'
+                        : 'text-[#71717a] dark:text-[#a1a1aa] hover:text-[#09090b] dark:hover:text-white'
                     "
                     @click="selecionarModoPersonalizado('personalizado_periodo')"
                   >
@@ -473,50 +525,54 @@ const doughnutOptions = {
                 </div>
 
                 <div v-if="tipoData === 'personalizado_dia'" class="space-y-1.5">
-                  <label class="text-[11px] text-[#a1a1aa]">Selecione a data</label>
+                  <label class="text-[11px] text-[#71717a] dark:text-[#a1a1aa]"
+                    >Selecione a data</label
+                  >
                   <input
                     v-model="dataUnica"
                     type="date"
-                    class="h-9 w-full cursor-pointer rounded-lg border border-[#27272a] bg-[#09090b] px-2 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                    class="h-9 w-full cursor-pointer rounded-lg border border-[#e4e4e7] dark:border-[#27272a] bg-white dark:bg-[#09090b] px-2 text-xs text-[#09090b] dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
                   />
                 </div>
 
                 <div v-else-if="tipoData === 'personalizado_periodo'" class="space-y-2">
                   <div class="space-y-1">
-                    <label class="text-[11px] text-[#a1a1aa]">De</label>
+                    <label class="text-[11px] text-[#71717a] dark:text-[#a1a1aa]">De</label>
                     <input
                       v-model="dataInicio"
                       type="date"
-                      class="h-9 w-full cursor-pointer rounded-lg border border-[#27272a] bg-[#09090b] px-2 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                      class="h-9 w-full cursor-pointer rounded-lg border border-[#e4e4e7] dark:border-[#27272a] bg-white dark:bg-[#09090b] px-2 text-xs text-[#09090b] dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
                   <div class="space-y-1">
-                    <label class="text-[11px] text-[#a1a1aa]">Até</label>
+                    <label class="text-[11px] text-[#71717a] dark:text-[#a1a1aa]">Até</label>
                     <input
                       v-model="dataFim"
                       type="date"
                       :min="dataInicio || undefined"
-                      class="h-9 w-full cursor-pointer rounded-lg border border-[#27272a] bg-[#09090b] px-2 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                      class="h-9 w-full cursor-pointer rounded-lg border border-[#e4e4e7] dark:border-[#27272a] bg-white dark:bg-[#09090b] px-2 text-xs text-[#09090b] dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
                 </div>
 
-                <p v-else class="py-1 text-[11px] text-[#a1a1aa]">
+                <p v-else class="py-1 text-[11px] text-[#71717a] dark:text-[#a1a1aa]">
                   Escolha "Dia específico" ou "Período" para uma data personalizada.
                 </p>
               </div>
 
-              <div class="mt-3 flex items-center justify-between border-t border-[#27272a] pt-3">
+              <div
+                class="mt-3 flex items-center justify-between border-t border-[#e4e4e7] dark:border-[#27272a] pt-3"
+              >
                 <button
                   type="button"
-                  class="h-8 px-3 cursor-pointer text-xs text-[#a1a1aa] hover:text-white transition"
+                  class="h-8 px-3 cursor-pointer text-xs text-[#71717a] dark:text-[#a1a1aa] hover:text-[#09090b] dark:hover:text-white transition"
                   @click="limparFiltroData"
                 >
                   Limpar
                 </button>
                 <button
                   type="button"
-                  class="h-8 px-3.5 cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs rounded-lg transition"
+                  class="h-8 px-3.5 cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg transition"
                   @click="filtroDataAberto = false"
                 >
                   Aplicar
@@ -528,7 +584,7 @@ const doughnutOptions = {
 
         <button
           @click="handleRefresh"
-          class="bg-[#10b981] hover:bg-[#059669] text-black text-xs px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer"
+          class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg flex items-center gap-2 transition cursor-pointer shadow-sm"
         >
           <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': salesQuery.isFetching.value }" />
           <span>Atualizar</span>
@@ -536,7 +592,9 @@ const doughnutOptions = {
       </div>
     </div>
 
-    <div class="bg-[#18181b] p-1 rounded-xl border border-[#27272a] grid grid-cols-4 gap-1 mb-6">
+    <div
+      class="bg-white dark:bg-[#18181b] p-1 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm grid grid-cols-4 gap-1 mb-6"
+    >
       <button
         v-for="tab in [
           { id: 'vendas', label: 'Vendas', icon: TrendingUp },
@@ -549,8 +607,8 @@ const doughnutOptions = {
         :class="[
           'flex items-center justify-center gap-2 py-2.5 text-xs font-medium rounded-lg transition cursor-pointer select-none',
           activeTab === tab.id
-            ? 'bg-[#27272a] text-white shadow-sm font-semibold'
-            : 'text-[#a1a1aa] hover:text-white hover:bg-[#27272a]/50',
+            ? 'bg-[#f4f4f5] dark:bg-[#27272a] text-[#09090b] dark:text-white font-semibold border border-[#e4e4e7] dark:border-transparent shadow-sm'
+            : 'text-[#71717a] dark:text-[#a1a1aa] hover:text-[#09090b] dark:hover:text-white hover:bg-[#f4f4f5]/60 dark:hover:bg-[#27272a]/50',
         ]"
       >
         <component :is="tab.icon" class="w-4 h-4" />
@@ -559,45 +617,64 @@ const doughnutOptions = {
     </div>
 
     <div v-if="activeTab === 'vendas'" class="space-y-6">
-      <div v-if="salesQuery.isLoading.value" class="text-[#a1a1aa] py-12 text-center text-xs">
+      <div
+        v-if="salesQuery.isLoading.value"
+        class="text-[#71717a] dark:text-[#a1a1aa] py-12 text-center text-xs"
+      >
         Carregando relatórios de vendas...
       </div>
 
       <template v-else-if="salesQuery.data.value">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="bg-[#18181b] p-4 rounded-xl border border-[#27272a]">
-            <span class="text-xs text-[#a1a1aa] font-medium">Faturamento</span>
-            <p class="text-2xl font-bold mt-1 text-white">
+          <div
+            class="bg-white dark:bg-[#18181b] p-4 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <span class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium">Faturamento</span>
+            <p class="text-2xl font-bold mt-1 text-[#09090b] dark:text-white">
               {{ formatCurrency(salesQuery.data.value.cards.faturamento) }}
             </p>
           </div>
 
-          <div class="bg-[#18181b] p-4 rounded-xl border border-[#27272a]">
-            <span class="text-xs text-[#a1a1aa] font-medium">Vendas realizadas</span>
-            <p class="text-2xl font-bold mt-1 text-white">
+          <div
+            class="bg-white dark:bg-[#18181b] p-4 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <span class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium"
+              >Vendas realizadas</span
+            >
+            <p class="text-2xl font-bold mt-1 text-[#09090b] dark:text-white">
               {{ salesQuery.data.value.cards.vendas_realizadas }}
             </p>
           </div>
 
-          <div class="bg-[#18181b] p-4 rounded-xl border border-[#27272a]">
-            <span class="text-xs text-[#a1a1aa] font-medium">Itens vendidos</span>
-            <p class="text-2xl font-bold mt-1 text-white">
+          <div
+            class="bg-white dark:bg-[#18181b] p-4 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <span class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium"
+              >Itens vendidos</span
+            >
+            <p class="text-2xl font-bold mt-1 text-[#09090b] dark:text-white">
               {{ salesQuery.data.value.cards.itens_vendidos || 0 }}
             </p>
           </div>
 
-          <div class="bg-[#18181b] p-4 rounded-xl border border-[#27272a]">
-            <span class="text-xs text-[#a1a1aa] font-medium">Produtos sem vendas</span>
-            <p class="text-2xl font-bold mt-1 text-white">
+          <div
+            class="bg-white dark:bg-[#18181b] p-4 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <span class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium"
+              >Produtos sem vendas</span
+            >
+            <p class="text-2xl font-bold mt-1 text-[#09090b] dark:text-white">
               {{ salesQuery.data.value.cards.produtos_sem_vendas }}
             </p>
           </div>
         </div>
 
-        <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
+        <div
+          class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+        >
           <div class="mb-4">
-            <h3 class="text-sm font-semibold text-white">Vendas por dia</h3>
-            <p class="text-xs text-[#a1a1aa]">
+            <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">Vendas por dia</h3>
+            <p class="text-xs text-[#71717a] dark:text-[#a1a1aa]">
               Evolução do faturamento no período, com destaque para os extremos.
             </p>
           </div>
@@ -607,9 +684,11 @@ const doughnutOptions = {
           </div>
         </div>
 
-        <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
-          <h3 class="text-sm font-semibold text-white">Vendas por grupo</h3>
-          <p class="text-xs text-[#a1a1aa] mb-4">
+        <div
+          class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+        >
+          <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">Vendas por grupo</h3>
+          <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] mb-4">
             {{ salesQuery.data.value.vendas_por_grupo?.length || 0 }} grupos no período
           </p>
 
@@ -618,11 +697,15 @@ const doughnutOptions = {
           </div>
         </div>
 
-        <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
+        <div
+          class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+        >
           <div class="flex items-center justify-between mb-3">
             <div>
-              <h3 class="text-sm font-semibold text-white">Produtos mais vendidos</h3>
-              <p class="text-xs text-[#a1a1aa]">
+              <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">
+                Produtos mais vendidos
+              </h3>
+              <p class="text-xs text-[#71717a] dark:text-[#a1a1aa]">
                 Mostrando {{ filteredTopProducts.length }} de
                 {{ salesQuery.data.value.produtos_mais_vendidos.length }}
               </p>
@@ -630,12 +713,14 @@ const doughnutOptions = {
           </div>
 
           <div class="relative mb-4">
-            <Search class="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#a1a1aa]" />
+            <Search
+              class="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#71717a] dark:text-[#a1a1aa]"
+            />
             <input
               v-model="searchProductSales"
               type="text"
               placeholder="Buscar produto..."
-              class="w-full bg-[#09090b] border border-[#27272a] rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-[#71717a] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
+              class="w-full bg-[#f8fafc] dark:bg-[#09090b] border border-[#e4e4e7] dark:border-[#27272a] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#09090b] dark:text-white placeholder-[#a1a1aa] focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
@@ -643,17 +728,19 @@ const doughnutOptions = {
             <div
               v-for="(prod, index) in filteredTopProducts"
               :key="prod.id"
-              class="flex items-center justify-between p-2.5 rounded-lg bg-[#09090b]/60 border border-[#27272a]/40 hover:bg-[#27272a]/40 transition"
+              class="flex items-center justify-between p-2.5 rounded-lg bg-[#f8fafc] dark:bg-[#09090b]/60 border border-[#e4e4e7] dark:border-[#27272a]/40 hover:bg-[#f4f4f5] dark:hover:bg-[#27272a]/40 transition"
             >
               <div class="flex items-center gap-3 min-w-0">
                 <span
-                  class="w-5 h-5 rounded-full bg-[#27272a] text-[#10b981] font-bold text-[10px] flex items-center justify-center shrink-0"
+                  class="w-5 h-5 rounded-full bg-[#e4e4e7] dark:bg-[#27272a] text-emerald-700 dark:text-[#10b981] font-bold text-[10px] flex items-center justify-center shrink-0"
                 >
                   {{ index + 1 }}
                 </span>
-                <span class="text-xs font-medium text-white truncate">{{ prod.name }}</span>
+                <span class="text-xs font-medium text-[#09090b] dark:text-white truncate">{{
+                  prod.name
+                }}</span>
               </div>
-              <span class="text-xs font-bold text-[#10b981] shrink-0 ml-2"
+              <span class="text-xs font-bold text-emerald-600 dark:text-[#10b981] shrink-0 ml-2"
                 >{{ prod.quantidade }} un.</span
               >
             </div>
@@ -663,37 +750,56 @@ const doughnutOptions = {
     </div>
 
     <div v-if="activeTab === 'compras'" class="space-y-6">
-      <div v-if="purchasesQuery.isLoading.value" class="text-[#a1a1aa] py-12 text-center text-xs">
+      <div
+        v-if="purchasesQuery.isLoading.value"
+        class="text-[#71717a] dark:text-[#a1a1aa] py-12 text-center text-xs"
+      >
         Carregando relatórios de compras...
       </div>
 
       <template v-else-if="purchasesQuery.data.value">
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="bg-[#18181b] p-4 rounded-xl border border-[#27272a]">
-            <span class="text-xs text-[#a1a1aa] font-medium">Total comprado</span>
-            <p class="text-2xl font-bold mt-1 text-white">
+          <div
+            class="bg-white dark:bg-[#18181b] p-4 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <span class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium"
+              >Total comprado</span
+            >
+            <p class="text-2xl font-bold mt-1 text-[#09090b] dark:text-white">
               {{ formatCurrency(purchasesQuery.data.value.cards.total_comprado) }}
             </p>
           </div>
 
-          <div class="bg-[#18181b] p-4 rounded-xl border border-[#27272a]">
-            <span class="text-xs text-[#a1a1aa] font-medium">Compras no período</span>
-            <p class="text-2xl font-bold mt-1 text-white">
+          <div
+            class="bg-white dark:bg-[#18181b] p-4 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <span class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium"
+              >Compras no período</span
+            >
+            <p class="text-2xl font-bold mt-1 text-[#09090b] dark:text-white">
               {{ purchasesQuery.data.value.cards.compras_no_periodo }}
             </p>
           </div>
 
-          <div class="bg-[#18181b] p-4 rounded-xl border border-[#27272a]">
-            <span class="text-xs text-[#a1a1aa] font-medium">Produtos a repor</span>
-            <p class="text-2xl font-bold mt-1 text-white">
+          <div
+            class="bg-white dark:bg-[#18181b] p-4 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <span class="text-xs text-[#71717a] dark:text-[#a1a1aa] font-medium"
+              >Produtos a repor</span
+            >
+            <p class="text-2xl font-bold mt-1 text-[#09090b] dark:text-white">
               {{ purchasesQuery.data.value.cards.produtos_a_repor }}
             </p>
           </div>
         </div>
 
-        <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
-          <h3 class="text-sm font-semibold text-white">Compras por fornecedor</h3>
-          <p class="text-xs text-[#a1a1aa] mb-4">
+        <div
+          class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+        >
+          <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">
+            Compras por fornecedor
+          </h3>
+          <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] mb-4">
             {{ purchasesQuery.data.value.compras_por_fornecedor?.length || 0 }} fornecedores no
             período
           </p>
@@ -703,19 +809,25 @@ const doughnutOptions = {
           </div>
         </div>
 
-        <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
-          <h3 class="text-sm font-semibold text-white">
+        <div
+          class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+        >
+          <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">
             Produtos vendidos que precisam de reposição
           </h3>
-          <p class="text-xs text-[#a1a1aa] mb-4">Clique em um produto para editar o cadastro.</p>
+          <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] mb-4">
+            Clique em um produto para editar o cadastro.
+          </p>
 
           <div class="relative mb-4">
-            <Search class="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#a1a1aa]" />
+            <Search
+              class="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#71717a] dark:text-[#a1a1aa]"
+            />
             <input
               v-model="searchProductPurchases"
               type="text"
               placeholder="Buscar produto..."
-              class="w-full bg-[#09090b] border border-[#27272a] rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-[#71717a] focus:outline-none focus:ring-1 focus:ring-[#10b981]"
+              class="w-full bg-[#f8fafc] dark:bg-[#09090b] border border-[#e4e4e7] dark:border-[#27272a] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#09090b] dark:text-white placeholder-[#a1a1aa] focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>
 
@@ -723,19 +835,21 @@ const doughnutOptions = {
             <div
               v-for="prod in filteredReplenishProducts"
               :key="prod.id"
-              class="flex items-center justify-between p-3 rounded-lg bg-[#09090b] border border-[#27272a]/60 hover:border-[#27272a] transition cursor-pointer"
+              class="flex items-center justify-between p-3 rounded-lg bg-[#f8fafc] dark:bg-[#09090b] border border-[#e4e4e7] dark:border-[#27272a]/60 hover:border-[#cbd5e1] dark:hover:border-[#27272a] transition cursor-pointer"
             >
               <div>
-                <p class="text-xs font-semibold text-white">{{ prod.name }}</p>
-                <p class="text-[11px] text-[#a1a1aa]">Mínimo: {{ prod.min_stock_quantity }} un.</p>
+                <p class="text-xs font-semibold text-[#09090b] dark:text-white">{{ prod.name }}</p>
+                <p class="text-[11px] text-[#71717a] dark:text-[#a1a1aa]">
+                  Mínimo: {{ prod.min_stock_quantity }} un.
+                </p>
               </div>
 
               <span
                 :class="[
                   'text-[11px] font-bold px-2.5 py-1 rounded-full cursor-pointer',
                   prod.stock_quantity <= 0
-                    ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20',
+                    ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20'
+                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20',
                 ]"
               >
                 {{ prod.status_label }}
@@ -747,24 +861,37 @@ const doughnutOptions = {
     </div>
 
     <div v-if="activeTab === 'produtos'" class="space-y-6">
-      <div v-if="productsQuery.isLoading.value" class="text-[#a1a1aa] py-12 text-center text-xs">
+      <div
+        v-if="productsQuery.isLoading.value"
+        class="text-[#71717a] dark:text-[#a1a1aa] py-12 text-center text-xs"
+      >
         Carregando relatórios de produtos...
       </div>
 
       <template v-else-if="productsQuery.data.value">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
-            <h3 class="text-sm font-semibold text-white">Produtos por grupo</h3>
-            <p class="text-xs text-[#a1a1aa] mb-4">Distribuição percentual por grupo cadastrado.</p>
+          <div
+            class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">Produtos por grupo</h3>
+            <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] mb-4">
+              Distribuição percentual por grupo cadastrado.
+            </p>
 
             <div class="h-60 w-full flex items-center justify-center">
               <Doughnut :data="productsGroupChartData" :options="doughnutOptions" />
             </div>
           </div>
 
-          <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
-            <h3 class="text-sm font-semibold text-white mb-2">Situação do estoque</h3>
-            <p class="text-xs text-[#a1a1aa] mb-4">Métricas de níveis de estoque atual.</p>
+          <div
+            class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <h3 class="text-sm font-semibold text-[#09090b] dark:text-white mb-2">
+              Situação do estoque
+            </h3>
+            <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] mb-4">
+              Métricas de níveis de estoque atual.
+            </p>
 
             <div class="h-60 w-full flex items-center justify-center">
               <Doughnut :data="stockDoughnutData" :options="doughnutOptions" />
@@ -775,21 +902,32 @@ const doughnutOptions = {
     </div>
 
     <div v-if="activeTab === 'pessoas'" class="space-y-6">
-      <div v-if="peopleQuery.isLoading.value" class="text-[#a1a1aa] py-12 text-center text-xs">
+      <div
+        v-if="peopleQuery.isLoading.value"
+        class="text-[#71717a] dark:text-[#a1a1aa] py-12 text-center text-xs"
+      >
         Carregando relatórios de pessoas...
       </div>
 
       <template v-else-if="peopleQuery.data.value">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
-            <h3 class="text-sm font-semibold text-white mb-4">Pessoas por grupo</h3>
+          <div
+            class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <h3 class="text-sm font-semibold text-[#09090b] dark:text-white mb-4">
+              Pessoas por grupo
+            </h3>
             <div class="h-60 w-full">
               <Bar :data="peopleGroupChartData" :options="verticalBarOptions" />
             </div>
           </div>
 
-          <div class="bg-[#18181b] p-5 rounded-xl border border-[#27272a]">
-            <h3 class="text-sm font-semibold text-white mb-4">Pessoas por faixa etária</h3>
+          <div
+            class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
+          >
+            <h3 class="text-sm font-semibold text-[#09090b] dark:text-white mb-4">
+              Pessoas por faixa etária
+            </h3>
             <div class="h-60 w-full">
               <Bar :data="peopleAgeChartData" :options="verticalBarOptions" />
             </div>
@@ -799,20 +937,19 @@ const doughnutOptions = {
     </div>
   </div>
 </template>
-
 <style scoped>
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #09090b;
+  background: #f8fafc;
   border-radius: 4px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: #e4e4e7;
   border-radius: 4px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: #cbd5e1;
 }
 </style>
