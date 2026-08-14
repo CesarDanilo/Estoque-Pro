@@ -97,14 +97,17 @@ function resetPag() {
 
 // ---- TanStack Query: Carregar Grupos para o Filtro ----
 const { data: listaGruposData } = useQuery({
-  queryKey: ['groups'],
-  queryFn: () => groupService.getAll(),
+  queryKey: ['groups', 'filtro'],
+  queryFn: () => groupService.listar({ per_page: 100 }),
   staleTime: 1000 * 60 * 10,
 })
 
 const listaGrupos = computed(() => {
-  if (Array.isArray(listaGruposData?.value)) return listaGruposData.value
-  return listaGruposData?.value?.data || []
+  const payload = listaGruposData?.value
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload?.data?.data)) return payload.data.data
+  return []
 })
 
 // ---- TanStack Query: Buscar Lista de Produtos ----
