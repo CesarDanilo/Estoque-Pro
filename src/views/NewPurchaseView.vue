@@ -69,6 +69,13 @@ function brl(valor) {
   )
 }
 
+// ---- Limites dos campos numéricos dos itens ----
+// Custo: até 10 dígitos de centavos (R$ 99.999.999,99)
+// Quantidade: até 6 dígitos (999.999 unidades) — evita que um valor absurdo
+// digitado ou colado no campo estoure o total da compra.
+const CUSTO_MAX_DIGITOS = 10
+const QTD_MAX_DIGITOS = 6
+
 // ---- Helpers de formatação do custo ----
 function custoValor(item) {
   return item.custoCentavos ? Number(item.custoCentavos) / 100 : 0
@@ -83,7 +90,21 @@ function custoFormatado(item) {
 }
 
 function onInputCusto(item, evento) {
-  item.custoCentavos = (evento.target.value || '').replace(/\D/g, '').slice(0, 10)
+  const digitos = (evento.target.value || '').replace(/\D/g, '').slice(0, CUSTO_MAX_DIGITOS)
+  item.custoCentavos = digitos
+  // Reescreve o valor exibido no campo com o texto já formatado e travado no
+  // limite — sem isso, o texto digitado na tela podia continuar crescendo
+  // mesmo com o valor interno já limitado, e só "estourava" visualmente no
+  // total da compra.
+  evento.target.value = custoFormatado(item)
+}
+
+// ---- Helpers de quantidade (sem setas nativas, com limite de dígitos) ----
+function onInputQtd(item, evento) {
+  const digitos = (evento.target.value || '').replace(/\D/g, '').slice(0, QTD_MAX_DIGITOS)
+  const valor = digitos === '' ? 1 : Math.max(1, parseInt(digitos, 10))
+  item.qtd = valor
+  evento.target.value = String(valor)
 }
 
 // ---- Fornecedores (API) ----
@@ -265,7 +286,10 @@ function remover(id) {
 
 function alterarQtd(id, delta) {
   const item = itens.value.find((i) => String(i.id) === String(id))
-  if (item) item.qtd = Math.max(1, (Number(item.qtd) || 0) + delta)
+  if (item) {
+    const proximo = (Number(item.qtd) || 0) + delta
+    item.qtd = Math.min(Math.max(1, proximo), 10 ** QTD_MAX_DIGITOS - 1)
+  }
 }
 
 // Callback do Modal de Produto Completo
@@ -558,11 +582,19 @@ async function finalizar() {
                   >
                     <Minus class="size-3" />
                   </Button>
-                  <Input
-                    v-model.number="i.qtd"
-                    type="number"
-                    min="1"
-                    class="h-7 w-12 cursor-text p-1 text-center text-xs"
+                  <!-- 🔴 CORRIGIDO: campo de quantidade era type="number" (gera as
+                       setinhas nativas do navegador) e não tinha limite de dígitos.
+                       Trocado para type="text" + inputmode="numeric", sem setas,
+                       com sanitização e limite de 6 dígitos (até 999.999 un.) via
+                       onInputQtd. -->
+                  <input
+                    :value="i.qtd"
+                    type="text"
+                    inputmode="numeric"
+                    :maxlength="QTD_MAX_DIGITOS"
+                    class="h-7 w-12 cursor-text rounded-md border border-input bg-transparent p-1 text-center text-xs outline-none focus:ring-2 focus:ring-ring"
+                    @input="onInputQtd(i, $event)"
+                    @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                   />
                   <Button
                     variant="outline"
@@ -587,6 +619,7 @@ async function finalizar() {
                     placeholder="0,00"
                     class="h-7 w-full cursor-text rounded-md border border-input bg-transparent pl-7 pr-1 text-xs outline-none focus:ring-2 focus:ring-ring"
                     @input="onInputCusto(i, $event)"
+                    @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                   />
                 </div>
 
