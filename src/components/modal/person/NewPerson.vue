@@ -40,6 +40,15 @@ const props = defineProps({
   aoAtualizar: { type: Function, required: true },
   // atualização parcial (PATCH) — recebe (id, camposAlteradosNoFormatoDaApi)
   aoAtualizarParcial: { type: Function, default: null },
+  // 🟢 NOVO: categoria inicial no modo criação ('client' | 'supplier').
+  // Não tem efeito no modo edição (lá a categoria vem do registro).
+  categoriaPadrao: { type: String, default: null },
+  // 🟢 NOVO: quando true, trava o Select de Categoria (desabilitado).
+  // Útil para modais especializados, como "cadastro de fornecedor".
+  categoriaFixa: { type: Boolean, default: false },
+  // 🟢 NOVO: títulos customizáveis do modal.
+  tituloCriacao: { type: String, default: 'Nova pessoa' },
+  tituloEdicao: { type: String, default: 'Editar pessoa' },
 })
 
 const emit = defineEmits(['update:open', 'created', 'updated'])
@@ -101,6 +110,9 @@ const form = reactive({
 let snapshot = null
 
 const modoEdicao = computed(() => !!props.pessoa)
+
+// título do dialog: usa as props customizáveis (default = "Nova/Editar pessoa")
+const tituloModal = computed(() => (modoEdicao.value ? props.tituloEdicao : props.tituloCriacao))
 
 // gênero/nascimento só fazem sentido pra pessoa física
 const ehPessoaFisica = computed(() => form.type === 'individual')
@@ -168,11 +180,8 @@ function dataLocalHoje() {
 const hoje = dataLocalHoje()
 
 // normaliza datas vindas da API pro formato do <input type="date"> (AAAA-MM-DD).
-// 🔴 CORRIGIDO: a API de documento retorna a data de nascimento no formato
-// brasileiro "DD/MM/AAAA" (ex.: "20/02/2001"), e não em ISO. O código antigo
-// só fazia um `slice(0, 10)`, que é válido pra datas ISO ("2001-02-20T...")
-// mas devolvia a string brasileira inalterada — e o <input type="date"> não
-// aceita "DD/MM/AAAA", então o campo ficava vazio silenciosamente.
+// A API de documento retorna a data de nascimento no formato brasileiro
+// "DD/MM/AAAA" (ex.: "20/02/2001"); aqui detectamos esse padrão e convertemos.
 function paraDataInput(valor) {
   if (!valor) return ''
 
@@ -290,7 +299,9 @@ watch(documentoEhCPF, (ehCpf) => {
 })
 
 // Fornecedor é sempre pessoa jurídica: ao selecionar essa categoria,
-// trava o tipo automaticamente.
+// trava o tipo automaticamente. Isso vale tanto pra quando o usuário troca
+// manualmente o Select quanto para quando `categoriaPadrao` já inicia o
+// formulário como 'supplier' (ver preencherFormulario).
 watch(
   () => form.categoria,
   (categoria) => {
@@ -333,11 +344,8 @@ watch(
 // registro (documentoApi.status === 'found'), preenche automaticamente
 // nome (e, se for CPF, nascimento/gênero).
 //
-// 🔴 CORRIGIDO (gênero): a API devolve o gênero como uma letra única
-// ("M" / "F"), não como "male" / "female". O código antigo comparava
-// `generoNormalizado === 'male'`, que nunca batia com "m", então o campo
-// nunca era preenchido. Agora aceitamos tanto a letra quanto a palavra
-// por extenso.
+// A API devolve o gênero como uma letra única ("M" / "F"), então aceitamos
+// tanto a letra quanto a palavra por extenso.
 watch(
   () => documentoApi.status,
   (status) => {
@@ -464,7 +472,10 @@ function preencherFormulario() {
     cep.setValue(p.cep ?? '')
     email.value = p.email ?? ''
   } else {
-    form.categoria = 'client'
+    // 🟢 NOVO: no modo criação, usa `categoriaPadrao` se ela foi passada
+    // (ex.: modal de fornecedor abre direto com categoria = 'supplier',
+    // o que já dispara o watch acima e trava o tipo em "jurídica").
+    form.categoria = props.categoriaPadrao ?? 'client'
     form.type = 'individual'
     form.nome = ''
     form.nomeFantasia = ''
@@ -715,7 +726,7 @@ async function salvar() {
     >
       <DialogHeader class="space-y-0.5 pb-1">
         <DialogTitle class="text-lg font-semibold tracking-tight sm:text-xl">
-          {{ modoEdicao ? 'Editar pessoa' : 'Nova pessoa' }}
+          {{ tituloModal }}
         </DialogTitle>
         <DialogDescription class="text-xs text-muted-foreground sm:text-sm">
           Os campos marcados com <span class="text-destructive">*</span> são obrigatórios.
@@ -734,7 +745,7 @@ async function salvar() {
               <label for="categoria" class="mb-1 block text-xs font-medium text-foreground">
                 Categoria <span class="text-destructive">*</span>
               </label>
-              <Select v-model="form.categoria">
+              <Select v-model="form.categoria" :disabled="categoriaFixa">
                 <SelectTrigger id="categoria" class="h-9 w-full cursor-pointer text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -743,6 +754,9 @@ async function salvar() {
                   <SelectItem value="supplier" class="cursor-pointer">Fornecedor</SelectItem>
                 </SelectContent>
               </Select>
+              <p v-if="categoriaFixa" class="mt-0.5 truncate text-[10px] text-muted-foreground">
+                Definido automaticamente para este cadastro.
+              </p>
             </div>
 
             <div class="col-span-1 lg:col-span-2">

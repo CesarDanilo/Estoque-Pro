@@ -36,7 +36,12 @@ import EmptyState from '@/components/page-shell/EmptyState.vue'
 import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
-import SupplierModal from '@/components/modal/supplier/NewSupplier.vue'
+// 🔴 TROCADO: não usamos mais o modal específico de fornecedor.
+// Agora chamamos o modal padrão de Pessoa (o mesmo usado no módulo de
+// clientes/pessoas), que já cobre PF/PJ, categoria (cliente/fornecedor)
+// e todos os campos de endereço/contato.
+// Ajuste o caminho abaixo se o componente estiver em outro lugar no seu projeto.
+import PersonModal from '@/components/modal/person/NewPerson.vue'
 import { useFeedback } from '@/composables/useFeedBack'
 import { supplierService } from '@/services/supplierService'
 
@@ -55,7 +60,7 @@ watch(busca, () => {
   pagina.value = 1
 })
 
-// ---- Modais e Diálogos ----
+// ---- Modal e Diálogos ----
 const modalAberto = ref(false)
 const fornecedorEditando = ref(null)
 const fornecedorParaExcluir = ref(null)
@@ -177,6 +182,19 @@ function abrirNovoModal() {
 function abrirEdicaoModal(fornecedor) {
   fornecedorEditando.value = fornecedor
   modalAberto.value = true
+}
+
+// 🟢 NOVO: o modal de Pessoa não sabe nada sobre "fornecedores" — ele só
+// executa aoCriar/aoAtualizar e emite 'created'/'updated'. Quem invalida a
+// query e mostra o toast de sucesso agora é esta página.
+function aoFornecedorCriado() {
+  queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  sucesso('Fornecedor cadastrado', 'O fornecedor foi cadastrado com sucesso.')
+}
+
+function aoFornecedorAtualizado() {
+  queryClient.invalidateQueries({ queryKey: ['suppliers'] })
+  sucesso('Fornecedor atualizado', 'Os dados do fornecedor foram atualizados com sucesso.')
 }
 
 function alternarStatusFornecedor(fornecedor) {
@@ -491,7 +509,30 @@ function confirmarExclusao() {
       </Section>
     </div>
 
-    <SupplierModal v-model:open="modalAberto" :fornecedor="fornecedorEditando" />
+    <!-- 🔴 TROCADO: agora usamos o modal padrão de Pessoa, já pré-configurado
+         para cadastro de fornecedor:
+         - categoria-padrao="supplier": ao abrir para um registro NOVO, o
+           formulário já nasce com categoria = "Fornecedor" (o que também
+           trava o Tipo em "Pessoa jurídica" automaticamente).
+         - categoria-fixa: desabilita o Select de Categoria, impedindo trocar
+           para "Cliente" por engano nesta tela.
+         - titulo-criacao / titulo-edicao: customizam o título do modal.
+         O modal só entra em modo edição quando `pessoa` é truthy
+         (fornecedorEditando) — nesse caso a categoria vem do próprio
+         registro, então categoria-padrao não tem efeito. -->
+    <PersonModal
+      v-model:open="modalAberto"
+      :pessoa="fornecedorEditando"
+      :ao-criar="supplierService.create"
+      :ao-atualizar="supplierService.update"
+      :ao-atualizar-parcial="supplierService.update"
+      categoria-padrao="supplier"
+      :categoria-fixa="true"
+      titulo-criacao="Novo fornecedor"
+      titulo-edicao="Editar fornecedor"
+      @created="aoFornecedorCriado"
+      @updated="aoFornecedorAtualizado"
+    />
 
     <AlertDialog
       :open="!!fornecedorParaExcluir"
