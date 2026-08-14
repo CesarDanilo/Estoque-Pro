@@ -128,7 +128,7 @@ const erros = reactive({})
 const form = reactive({
   categoria: 'client', // 'client' | 'supplier'
   type: 'individual', // 'individual' | 'company'
-  nome: '',
+  name: '',
   // Exclusivos de Pessoa Jurídica
   nomeFantasia: '',
   inscricaoEstadual: '',
@@ -760,11 +760,17 @@ function validar() {
   return resultado.data ?? payload
 }
 
-// mapa front -> API, usado só pra montar o diff no modo edição.
+// mapa front -> API. Usado tanto pra montar o payload completo (criação e
+// fallback de atualização completa) quanto pra montar o diff (PATCH).
+// 🔴 CORRIGIDO: faltavam 'documento' e 'cep', então esses dois campos nunca
+// chegavam traduzidos pro backend (por isso o Laravel reclamava de
+// "name"/"document" mesmo com os campos preenchidos no formulário — o
+// payload enviado tinha 'nome'/'documento', que a API não reconhece).
 const CAMPO_PARA_API = {
   categoria: 'category',
   type: 'type',
   nome: 'name',
+  documento: 'document',
   nomeFantasia: 'trade_name',
   inscricaoEstadual: 'state_registration',
   pessoaContato: 'contact_person',
@@ -772,6 +778,7 @@ const CAMPO_PARA_API = {
   email: 'email',
   genero: 'gender',
   nascimento: 'birth_date',
+  cep: 'zip_code',
   logradouro: 'street',
   numero: 'number',
   complemento: 'complement',
@@ -781,24 +788,34 @@ const CAMPO_PARA_API = {
   ativo: 'active',
 }
 
+// 🟢 NOVO: traduz o payload inteiro (formato front, em português) pro
+// formato que a API espera (em inglês). Usado na criação e no fallback de
+// atualização completa — antes esses dois fluxos enviavam o payload cru,
+// com as chaves em português, e a API não reconhecia nenhum campo.
+function converterParaApi(payloadFront) {
+  const payloadApi = {}
+  for (const [campoFront, valor] of Object.entries(payloadFront)) {
+    const campoApi = CAMPO_PARA_API[campoFront]
+    if (campoApi) {
+      payloadApi[campoApi] = valor
+    }
+  }
+  return payloadApi
+}
+
 // compara o payload atual (formato front) com o snapshot e devolve só o que mudou,
 // já convertido pro formato da API (ex.: 'nome' -> 'name')
 function calcularDiff(payloadAtual) {
   const diff = {}
 
   for (const [campoFront, valorAtual] of Object.entries(payloadAtual)) {
-    if (campoFront === 'documento') continue // tratado à parte abaixo
-
     const valorOriginal = snapshot ? snapshot[campoFront] : undefined
     if (valorAtual !== valorOriginal) {
-      diff[CAMPO_PARA_API[campoFront]] = valorAtual
+      const campoApi = CAMPO_PARA_API[campoFront]
+      if (campoApi) {
+        diff[campoApi] = valorAtual
+      }
     }
-  }
-
-  const documentoAtual = payloadAtual.documento
-  const documentoOriginal = snapshot ? snapshot.documento : undefined
-  if (documentoAtual !== documentoOriginal) {
-    diff.document = documentoAtual || null
   }
 
   return diff
@@ -829,15 +846,47 @@ const MAPA_CAMPOS_API = {
 
 function aplicarErrosDaApi(e) {
   const apiErrors = e.response?.data?.errors
+  const message = e.response?.data?.message ?? ''
 
   if (apiErrors) {
     Object.entries(apiErrors).forEach(([campo, mensagens]) => {
       const chave = MAPA_CAMPOS_API[campo] || campo
-      erros[chave] = Array.isArray(mensagens) ? mensagens[0] : mensagens
+      const mensagemOriginal = Array.isArray(mensagens) ? mensagens[0] : mensagens
+
+      // 🟢 Tratamento para erro de CPF/CNPJ duplicado
+      if (campo === 'document' || chave === 'documento') {
+        const textoErro = String(mensagemOriginal).toLowerCase()
+
+        if (
+          textoErro.includes('taken') ||
+          textoErro.includes('already been taken') ||
+          textoErro.includes('ja existe') ||
+          textoErro.includes('já existe') ||
+          textoErro.includes('unique')
+        ) {
+          erros.documento = 'Já existe um cliente ou fornecedor cadastrado com este CPF/CNPJ.'
+          return
+        }
+      }
+
+      erros[chave] = mensagemOriginal
     })
+
     erro('Confira os campos destacados antes de salvar.')
   } else {
-    erro(e.response?.data?.message || 'Não foi possível salvar. Tente novamente.')
+    // 🟢 Trata caso o backend retorne o erro na raiz da resposta 'message' em vez de 'errors'
+    const msgBaixa = String(message).toLowerCase()
+    if (
+      msgBaixa.includes('taken') ||
+      msgBaixa.includes('already been taken') ||
+      msgBaixa.includes('ja existe') ||
+      msgBaixa.includes('já existe')
+    ) {
+      erros.documento = 'Já existe um cliente ou fornecedor cadastrado com este CPF/CNPJ.'
+      erro('Já existe um registro com este CPF/CNPJ.')
+    } else {
+      erro(message || 'Não foi possível salvar. Tente novamente.')
+    }
   }
 }
 
@@ -860,13 +909,18 @@ async function salvar() {
         return
       }
 
+      // 🔴 CORRIGIDO: fallback de atualização completa também precisa
+      // enviar o payload traduzido, não o payload cru em português.
       const pessoaSalva = props.aoAtualizarParcial
         ? await props.aoAtualizarParcial(props.pessoa.id, diff)
-        : await props.aoAtualizar(props.pessoa.id, payload)
+        : await props.aoAtualizar(props.pessoa.id, converterParaApi(payload))
 
       emit('updated', pessoaSalva)
     } else {
-      const pessoaSalva = await props.aoCriar(payload)
+      // 🔴 CORRIGIDO: era `props.aoCriar(payload)`, enviando 'nome'/'documento'
+      // em vez de 'name'/'document' — por isso o Laravel dizia que os dois
+      // campos eram obrigatórios mesmo estando preenchidos no formulário.
+      const pessoaSalva = await props.aoCriar(converterParaApi(payload))
       emit('created', pessoaSalva)
     }
     fechar()
