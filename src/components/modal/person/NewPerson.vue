@@ -986,7 +986,7 @@ async function salvar() {
             Contato
           </h3>
 
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-[200px_1fr]">
             <div>
               <label for="telefone" class="mb-1 block text-xs font-medium text-foreground">
                 Telefone
