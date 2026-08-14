@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
@@ -10,6 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Loader2,
   MoreHorizontal,
   Package,
   Plus,
@@ -34,6 +37,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 import {
   DropdownMenu,
@@ -226,7 +239,6 @@ onUnmounted(() => {
 })
 
 const pagina = ref(1)
-const modalAberto = ref(false)
 
 const sortCampo = ref(null)
 const sortDirecao = ref('asc')
@@ -386,13 +398,40 @@ async function alterarStatusCompra(compra, novoStatus) {
   }
 }
 
-async function confirmarExclusao(compra) {
+// ---------------------------------------------------------------------------
+// Exclusão de Compra (com confirmação e bloqueio para compras recebidas)
+// ---------------------------------------------------------------------------
+const compraParaExcluir = ref(null)
+const excluindo = ref(false)
+
+// Compras já recebidas (concluídas) já deram entrada no estoque — excluir
+// diretamente deixaria o estoque inconsistente. Por isso, bloqueamos a
+// exclusão e pedimos pra mudar o status antes (ex.: cancelar a compra).
+const exclusaoBloqueada = computed(() => compraParaExcluir.value?.status === 'received')
+
+function pedirExclusao(compra) {
+  compraParaExcluir.value = compra
+}
+
+function fecharDialogExclusao() {
+  if (excluindo.value) return
+  compraParaExcluir.value = null
+}
+
+async function confirmarExclusao() {
+  const compra = compraParaExcluir.value
+  if (!compra || excluindo.value || exclusaoBloqueada.value) return
+
+  excluindo.value = true
   try {
     await deletePurchase(compra.id)
     sucesso('Compra excluída', `A compra #${compra.code} foi removida com sucesso.`)
+    compraParaExcluir.value = null
     refetch()
   } catch (err) {
     erro('Erro ao excluir', err?.response?.data?.message || 'Falha ao excluir no servidor.')
+  } finally {
+    excluindo.value = false
   }
 }
 </script>
@@ -404,12 +443,8 @@ async function confirmarExclusao(compra) {
     :trilha="[{ titulo: 'Movimentações' }, { titulo: 'Compras' }]"
   >
     <template #acoes>
-      <Button
-        class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600"
-        @click="modalAberto = true"
-      >
-        <Plus class="size-4" />
-        <RouterLink to="/compras/nova"> <ShoppingCart class="size-4" /> Nova compra </RouterLink>
+      <Button as-child class="cursor-pointer bg-emerald-500 text-black hover:bg-emerald-600">
+        <RouterLink to="/compras/nova"> <Plus class="size-4" /> Nova compra </RouterLink>
       </Button>
     </template>
   </PageHeader>
@@ -667,7 +702,7 @@ async function confirmarExclusao(compra) {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           class="cursor-pointer text-destructive focus:text-destructive"
-                          @click="confirmarExclusao(c)"
+                          @click="pedirExclusao(c)"
                         >
                           <Trash2 class="mr-2 size-4" /> Excluir
                         </DropdownMenuItem>
@@ -731,4 +766,55 @@ async function confirmarExclusao(compra) {
       </template>
     </Section>
   </div>
+
+  <AlertDialog :open="!!compraParaExcluir" @update:open="(o) => !o && fecharDialogExclusao()">
+    <AlertDialogContent>
+      <template v-if="exclusaoBloqueada">
+        <AlertDialogHeader>
+          <AlertDialogTitle class="flex items-center gap-2 text-amber-600">
+            <AlertTriangle class="size-5 shrink-0" />
+            Não é possível excluir a compra #{{ compraParaExcluir?.code }}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            Essa compra já está com a situação <strong>Recebida</strong> (concluída) e o estoque já
+            foi atualizado com base nela. Para excluí-la, primeiro mude a situação para
+            <strong>Aguardando recebimento</strong> ou <strong>Cancelada</strong> no menu de ações
+            da compra.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel class="cursor-pointer" @click="fecharDialogExclusao">
+            Entendi
+          </AlertDialogCancel>
+        </AlertDialogFooter>
+      </template>
+
+      <template v-else>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Excluir a compra #{{ compraParaExcluir?.code }}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Essa ação não pode ser desfeita. A compra será removida permanentemente do histórico.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            class="cursor-pointer"
+            :disabled="excluindo"
+            @click="fecharDialogExclusao"
+          >
+            Cancelar
+          </AlertDialogCancel>
+          <Button
+            type="button"
+            class="cursor-pointer bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
+            :disabled="excluindo"
+            @click="confirmarExclusao"
+          >
+            <Loader2 v-if="excluindo" class="size-4 animate-spin mr-1.5" />
+            {{ excluindo ? 'Excluindo…' : 'Excluir' }}
+          </Button>
+        </AlertDialogFooter>
+      </template>
+    </AlertDialogContent>
+  </AlertDialog>
 </template>
