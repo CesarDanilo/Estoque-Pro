@@ -278,7 +278,6 @@ function nivelEstoque(p) {
   return 'ok'
 }
 
-// ---- Máscaras Financeiras ----
 function criarMascaraMoeda(limiteDigitos = 8) {
   const raw = ref('')
 
@@ -298,6 +297,7 @@ function criarMascaraMoeda(limiteDigitos = 8) {
 
   function onInput(evento) {
     const val = evento?.target?.value || ''
+    // Corta os dígitos de acordo com o limite passado (padrão: 8 dígitos = até R$ 999.999,99)
     raw.value = val.replace(/\D/g, '').slice(0, limiteDigitos)
   }
 
@@ -306,7 +306,8 @@ function criarMascaraMoeda(limiteDigitos = 8) {
       raw.value = ''
       return
     }
-    raw.value = String(Math.round(Number(numero) * 100))
+    // Aplica o slice também ao definir um valor manual
+    raw.value = String(Math.round(Number(numero) * 100)).slice(0, limiteDigitos)
   }
 
   return { raw, formatted, valorNumerico, onInput, setValue }
@@ -922,10 +923,10 @@ async function salvar() {
                       :value="descontoValorExibido"
                       inputmode="decimal"
                       placeholder="0,00"
+                      maxlength="12"
                       :disabled="descontoPercentualPreenchido"
-                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       @input="onInputDescontoValor"
-                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                     />
                   </div>
                   <div class="relative">
@@ -934,10 +935,10 @@ async function salvar() {
                       :value="descontoPercentualExibido"
                       inputmode="decimal"
                       placeholder="0,00"
+                      maxlength="6"
                       :disabled="descontoValorPreenchido"
-                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       @input="descontoPercentual.onInput"
-                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                     />
                     <span
                       class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
@@ -960,10 +961,10 @@ async function salvar() {
                       :value="acrescimoValorExibido"
                       inputmode="decimal"
                       placeholder="0,00"
+                      maxlength="12"
                       :disabled="acrescimoPercentualPreenchido"
-                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       @input="acrescimo.onInput"
-                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                     />
                   </div>
                   <div class="relative">
@@ -972,10 +973,10 @@ async function salvar() {
                       :value="acrescimoPercentualExibido"
                       inputmode="decimal"
                       placeholder="0,00"
+                      maxlength="6"
                       :disabled="acrescimoValorPreenchido"
-                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      class="h-10 w-full cursor-text rounded-md border border-input bg-surface pl-3 pr-8 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                       @input="acrescimoPercentual.onInput"
-                      @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                     />
                     <span
                       class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
