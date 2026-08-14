@@ -261,6 +261,15 @@ function brl(valor) {
   return safeNumber(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// Formatação "crua" (sem símbolo de moeda/percentual) usada para preencher o
+// lado convertido dos campos de desconto/acréscimo.
+function formatarNumero(valor) {
+  return safeNumber(valor).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 function nivelEstoque(p) {
   const qtd = safeNumber(p.estoque ?? p.stock_quantity)
   const min = safeNumber(p.minimo ?? p.min_stock_quantity)
@@ -322,6 +331,7 @@ function criarMascaraPercentual(limiteDigitos = 5) {
 
   function onInput(evento) {
     const val = evento?.target?.value || ''
+    // Limite: no máximo 100,00% (raw representa o percentual × 100).
     let digitos = val.replace(/\D/g, '').slice(0, limiteDigitos)
     if (Number(digitos) > 10000) digitos = '10000'
     raw.value = digitos
@@ -405,6 +415,50 @@ const total = computed(() => {
   const res = subtotal.value - valorDescontoAplicado.value + valorAcrescimoAplicado.value
   return Math.max(0, safeNumber(res))
 })
+
+// ---- Conversão automática entre R$ e % (desconto e acréscimo) ----
+// Enquanto um lado está sendo preenchido, o outro fica desabilitado e passa
+// a exibir o valor JÁ CONVERTIDO com base no subtotal, em vez de ficar vazio.
+// Ex.: subtotal R$ 100, desconto de R$ 10 digitado → o campo de % mostra
+// automaticamente "10,00".
+const descontoValorExibido = computed(() => {
+  if (descontoPercentualPreenchido.value) {
+    return formatarNumero(valorDescontoAplicado.value)
+  }
+  return desconto.formatted.value
+})
+
+const descontoPercentualExibido = computed(() => {
+  if (descontoValorPreenchido.value) {
+    if (subtotal.value <= 0) return '0,00'
+    return formatarNumero((valorDescontoAplicado.value / subtotal.value) * 100)
+  }
+  return descontoPercentual.formatted.value
+})
+
+const acrescimoValorExibido = computed(() => {
+  if (acrescimoPercentualPreenchido.value) {
+    return formatarNumero(valorAcrescimoAplicado.value)
+  }
+  return acrescimo.formatted.value
+})
+
+const acrescimoPercentualExibido = computed(() => {
+  if (acrescimoValorPreenchido.value) {
+    if (subtotal.value <= 0) return '0,00'
+    return formatarNumero((valorAcrescimoAplicado.value / subtotal.value) * 100)
+  }
+  return acrescimoPercentual.formatted.value
+})
+
+// Limite: não faz sentido descontar mais do que o próprio subtotal da venda.
+// Se o valor digitado ultrapassar o subtotal, trava automaticamente nele.
+function onInputDescontoValor(evento) {
+  desconto.onInput(evento)
+  if (desconto.valorNumerico.value > subtotal.value) {
+    desconto.setValue(subtotal.value)
+  }
+}
 
 function resetar() {
   clienteId.value = ID_SEM_CLIENTE
@@ -865,19 +919,19 @@ async function salvar() {
                     >
                     <input
                       id="desconto"
-                      :value="desconto.formatted.value"
+                      :value="descontoValorExibido"
                       inputmode="decimal"
                       placeholder="0,00"
                       :disabled="descontoPercentualPreenchido"
                       class="h-10 w-full cursor-text rounded-md border border-input bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                      @input="desconto.onInput"
+                      @input="onInputDescontoValor"
                       @keypress="(e) => !/[0-9]/.test(e.key) && e.preventDefault()"
                     />
                   </div>
                   <div class="relative">
                     <input
                       id="desconto-percentual"
-                      :value="descontoPercentual.formatted.value"
+                      :value="descontoPercentualExibido"
                       inputmode="decimal"
                       placeholder="0,00"
                       :disabled="descontoValorPreenchido"
@@ -903,7 +957,7 @@ async function salvar() {
                     >
                     <input
                       id="acrescimo"
-                      :value="acrescimo.formatted.value"
+                      :value="acrescimoValorExibido"
                       inputmode="decimal"
                       placeholder="0,00"
                       :disabled="acrescimoPercentualPreenchido"
@@ -915,7 +969,7 @@ async function salvar() {
                   <div class="relative">
                     <input
                       id="acrescimo-percentual"
-                      :value="acrescimoPercentual.formatted.value"
+                      :value="acrescimoPercentualExibido"
                       inputmode="decimal"
                       placeholder="0,00"
                       :disabled="acrescimoValorPreenchido"
