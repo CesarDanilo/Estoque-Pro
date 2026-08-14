@@ -1,69 +1,101 @@
 import { z } from 'zod'
 
-/**
- * Schema de validação estrutural do formulário de Pessoas.
- *
- * Regras de negócio específicas (documento válido por dígito verificador,
- * "fornecedor precisa ser pessoa jurídica") ficam fora daqui e são
- * verificadas manualmente no componente, pois dependem de estado reativo
- * (ex.: tipo de documento detectado) que o Zod não teria acesso direto.
- */
 export const pessoaSchema = z
   .object({
-    categoria: z.enum(['client', 'supplier'], {
-      errorMap: () => ({ message: 'Selecione se é cliente ou fornecedor.' }),
+    category: z.enum(['client', 'supplier'], {
+      required_error: 'Selecione se é cliente ou fornecedor.',
+      invalid_type_error: 'Selecione se é cliente ou fornecedor.',
     }),
     type: z.enum(['individual', 'company'], {
-      errorMap: () => ({ message: 'Selecione o tipo (física ou jurídica).' }),
+      required_error: 'Selecione o tipo (física ou jurídica).',
+      invalid_type_error: 'Selecione o tipo (física ou jurídica).',
     }),
-    nome: z.string().trim().min(3, 'Informe o nome completo (mínimo 3 letras).').max(120),
-    documento: z.string().min(11, 'Informe um CPF ou CNPJ válido.').max(14),
-    telefone: z.string().max(11).optional().or(z.literal('')),
-    email: z.string().max(254).optional().or(z.literal('')),
+    name: z
+      .string()
+      .trim()
+      .min(3, 'Informe o nome completo (mínimo 3 letras).')
+      .max(120, 'O nome deve ter no máximo 120 caracteres.'),
+    document: z
+      .string()
+      .min(11, 'Informe um CPF ou CNPJ válido.')
+      .max(14, 'Informe um CPF ou CNPJ válido.'),
+    phone: z.string().max(11, 'Telefone inválido.').nullable().optional().or(z.literal('')),
+    email: z.string().max(254, 'E-mail muito longo.').nullable().optional().or(z.literal('')),
 
     // Exclusivos de Pessoa Jurídica
-    nomeFantasia: z.string().max(120).optional().or(z.literal('')),
-    inscricaoEstadual: z.string().max(20).optional().or(z.literal('')),
-    pessoaContato: z.string().max(120).optional().or(z.literal('')),
+    trade_name: z.string().max(120).nullable().optional().or(z.literal('')),
+    state_registration: z.string().max(20).nullable().optional().or(z.literal('')),
+    contact_person: z.string().max(120).nullable().optional().or(z.literal('')),
 
     // Exclusivos de Pessoa Física
-    genero: z.enum(['female', 'male', 'other']).nullable().optional(),
-    nascimento: z.string().nullable().optional(),
+    gender: z.enum(['female', 'male', 'other']).nullable().optional().or(z.literal('')),
+    birth_date: z.string().nullable().optional().or(z.literal('')),
 
-    // Endereço (todos opcionais)
-    cep: z.string().max(8).optional().or(z.literal('')),
-    logradouro: z.string().max(160).optional().or(z.literal('')),
-    numero: z.string().max(20).optional().or(z.literal('')),
-    complemento: z.string().max(60).optional().or(z.literal('')),
-    bairro: z.string().max(80).optional().or(z.literal('')),
-    cidade: z.string().max(80).optional().or(z.literal('')),
-    uf: z.string().max(2).optional().or(z.literal('')),
+    // Endereço
+    zip_code: z.string().max(8).nullable().optional().or(z.literal('')),
+    street: z.string().max(160).nullable().optional().or(z.literal('')),
+    number: z.string().max(20).nullable().optional().or(z.literal('')),
+    complement: z.string().max(60).nullable().optional().or(z.literal('')),
+    neighborhood: z.string().max(80).nullable().optional().or(z.literal('')),
+    city: z.string().max(80).nullable().optional().or(z.literal('')),
+    state: z.string().max(2).nullable().optional().or(z.literal('')),
 
-    ativo: z.boolean(),
+    active: z.boolean().default(true),
   })
   .superRefine((data, ctx) => {
-    if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(data.email)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['email'],
-        message: 'Informe um e-mail válido.',
-      })
+    // Validação de E-mail
+    if (data.email && data.email.trim() !== '') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+      if (!emailRegex.test(data.email)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['email'],
+          message: 'Informe um e-mail válido.',
+        })
+      }
     }
-    if (data.cep && data.cep.length !== 8) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['cep'],
-        message: 'CEP deve conter 8 dígitos.',
-      })
+
+    // Validação de CEP
+    if (data.zip_code && data.zip_code.trim() !== '') {
+      if (data.zip_code.length !== 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['zip_code'],
+          message: 'CEP deve conter 8 dígitos.',
+        })
+      }
     }
-    if (data.uf && !/^[A-Z]{2}$/.test(data.uf)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['uf'],
-        message: 'Informe a UF com 2 letras.',
-      })
+
+    // Validação de UF (Estado)
+    if (data.state && data.state.trim() !== '') {
+      if (!/^[A-Za-z]{2}$/.test(data.state)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['state'],
+          message: 'Informe a UF com 2 letras.',
+        })
+      }
     }
-    if (data.categoria === 'supplier' && data.type !== 'company') {
+
+    // Validação de CPF/CNPJ conforme tipo da pessoa
+    if (data.document && data.document.trim() !== '') {
+      if (data.type === 'individual' && data.document.length !== 11) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['document'],
+          message: 'CPF deve conter 11 dígitos.',
+        })
+      } else if (data.type === 'company' && data.document.length !== 14) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['document'],
+          message: 'CNPJ deve conter 14 dígitos.',
+        })
+      }
+    }
+
+    // Regra de Negócio: Fornecedor só pode ser Pessoa Jurídica
+    if (data.category === 'supplier' && data.type !== 'company') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['type'],

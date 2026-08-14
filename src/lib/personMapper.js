@@ -1,77 +1,83 @@
 /**
- * Converte o formato interno do formulário (campos em português) para o
- * payload esperado pelo PersonController (rotas /person).
- *
- * Importante: o backend valida o campo "document" (CPF ou CNPJ sem máscara),
- * não "cnpj"/"cpf" separados — essa separação existe apenas nas rotas de
- * Fornecedores (/suppliers), que são um recurso diferente.
+ * Converte e sanitiza o objeto do formulário para o payload
+ * esperado pelo PersonController (rotas /person).
  */
 export function personToApi(pessoa) {
-  const documentoLimpo = (pessoa.documento ?? '').replace(/\D/g, '')
+  // Trata o documento caso venha do composable ou do input direto
+  const docValue =
+    typeof pessoa.document === 'object' && pessoa.document !== null
+      ? pessoa.document.value
+      : pessoa.document
+
+  const documentoLimpo = String(docValue || '').replace(/\D/g, '')
+  const telefoneLimpo = String(pessoa.phone || '').replace(/\D/g, '')
+  const cepLimpo = String(pessoa.zip_code || '').replace(/\D/g, '')
+
   const ehPessoaFisica = pessoa.type === 'individual'
 
   return {
-    category: pessoa.categoria,
-    type: pessoa.type,
-    name: pessoa.nome,
+    category: pessoa.category || null,
+    type: pessoa.type || null,
+    name: pessoa.name || null,
     document: documentoLimpo || null,
 
     // Exclusivos de Pessoa Jurídica — nunca enviados para Pessoa Física
-    trade_name: ehPessoaFisica ? null : pessoa.nomeFantasia || null,
-    state_registration: ehPessoaFisica ? null : pessoa.inscricaoEstadual || null,
-    contact_person: ehPessoaFisica ? null : pessoa.pessoaContato || null,
+    trade_name: ehPessoaFisica ? null : pessoa.trade_name || null,
+    state_registration: ehPessoaFisica ? null : pessoa.state_registration || null,
+    contact_person: ehPessoaFisica ? null : pessoa.contact_person || null,
 
     // Exclusivos de Pessoa Física — nunca enviados para Pessoa Jurídica
-    gender: ehPessoaFisica ? pessoa.genero || null : null,
-    birth_date: ehPessoaFisica ? pessoa.nascimento || null : null,
+    gender: ehPessoaFisica ? pessoa.gender || null : null,
+    birth_date: ehPessoaFisica ? pessoa.birth_date || null : null,
 
-    phone: pessoa.telefone || null,
+    phone: telefoneLimpo || null,
     email: pessoa.email || null,
 
-    zip_code: pessoa.cep || null,
-    street: pessoa.logradouro || null,
-    number: pessoa.numero || null,
-    complement: pessoa.complemento || null,
-    neighborhood: pessoa.bairro || null,
-    city: pessoa.cidade || null,
-    state: pessoa.uf || null,
+    zip_code: cepLimpo || null,
+    street: pessoa.street || null,
+    number: pessoa.number || null,
+    complement: pessoa.complement || null,
+    neighborhood: pessoa.neighborhood || null,
+    city: pessoa.city || null,
+    state: pessoa.state || null,
 
-    active: pessoa.ativo ?? true,
+    active: Boolean(pessoa.active ?? true),
   }
 }
 
 /**
- * Converte a resposta da API (campos em inglês) para o formato interno
- * usado pelo formulário e pela listagem (campos em português).
+ * Normaliza a resposta da API para o formato esperado pelo estado reativo
+ * do formulário e da listagem.
  */
 export function personFromApi(p) {
+  if (!p) return {}
+
   return {
     id: p.id,
-    categoria: p.category,
-    type: p.type,
-    nome: p.name,
-    documento: p.document || p.cnpj || p.cpf || '',
+    category: p.category || 'client',
+    type: p.type || 'individual',
+    name: p.name || '',
+    document: p.document || p.cnpj || p.cpf || '',
 
-    nomeFantasia: p.trade_name,
-    inscricaoEstadual: p.state_registration,
-    pessoaContato: p.contact_person,
+    trade_name: p.trade_name || '',
+    state_registration: p.state_registration || '',
+    contact_person: p.contact_person || '',
 
-    genero: p.gender,
-    nascimento: p.birth_date,
+    gender: p.gender || '',
+    birth_date: p.birth_date || '',
 
-    telefone: p.phone,
-    email: p.email,
+    phone: p.phone || '',
+    email: p.email || '',
 
-    cep: p.zip_code,
-    logradouro: p.street,
-    numero: p.number,
-    complemento: p.complement,
-    bairro: p.neighborhood,
-    cidade: p.city,
-    uf: p.state,
+    zip_code: p.zip_code || '',
+    street: p.street || '',
+    number: p.number || '',
+    complement: p.complement || '',
+    neighborhood: p.neighborhood || '',
+    city: p.city || '',
+    state: p.state || '',
 
-    status: p.active ? 'ativo' : 'inativo',
-    ativo: p.active,
-    cadastro: p.created_at?.slice(0, 10),
+    active: Boolean(p.active),
+    created_at: p.created_at?.slice(0, 10) || '',
   }
 }

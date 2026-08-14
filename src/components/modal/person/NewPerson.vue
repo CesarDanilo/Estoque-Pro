@@ -44,19 +44,17 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   // quando preenchida, o modal entra em modo edição e popula os campos
   pessoa: { type: Object, default: null },
-  // cria pessoa nova — payload completo (vem do usePeople, no componente pai)
+  // cria pessoa nova — payload completo
   aoCriar: { type: Function, required: true },
   // atualização completa — usada como fallback se aoAtualizarParcial não vier
   aoAtualizar: { type: Function, required: true },
-  // atualização parcial (PATCH) — recebe (id, camposAlteradosNoFormatoDaApi)
+  // atualização parcial (PATCH) — recebe (id, camposAlterados)
   aoAtualizarParcial: { type: Function, default: null },
-  // 🟢 NOVO: categoria inicial no modo criação ('client' | 'supplier').
-  // Não tem efeito no modo edição (lá a categoria vem do registro).
+  // categoria inicial no modo criação ('client' | 'supplier')
   categoriaPadrao: { type: String, default: null },
-  // 🟢 NOVO: quando true, trava o Select de Categoria (desabilitado).
-  // Útil para modais especializados, como "cadastro de fornecedor".
+  // quando true, trava o Select de Categoria (desabilitado)
   categoriaFixa: { type: Boolean, default: false },
-  // 🟢 NOVO: títulos customizáveis do modal.
+  // títulos customizáveis do modal
   tituloCriacao: { type: String, default: 'Nova pessoa' },
   tituloEdicao: { type: String, default: 'Editar pessoa' },
 })
@@ -80,7 +78,7 @@ const CIDADE_MAX = 80
 // aceita apenas dígitos (0-9) — usado para validar documento, telefone e cep
 const SOMENTE_DIGITOS = /^\d+$/
 
-// 🟢 NOVO: lista das 27 unidades federativas, usada no combobox de UF.
+// lista das 27 unidades federativas, usada no combobox de UF.
 const UFS = [
   { sigla: 'AC', nome: 'Acre' },
   { sigla: 'AL', nome: 'Alagoas' },
@@ -116,9 +114,8 @@ const telefone = usePhoneMask()
 const cep = useCepMask()
 const email = useEmailValidation()
 
-// 🟢 validação em tempo real via API (CPFHub / BrasilAPI / AbstractAPI).
-// Não bloqueia o envio: só informa/preenche automaticamente quando possível.
-const documentoApi = useDocumentApiValidation(() => documento.raw.value)
+// validação em tempo real via API
+const documentoApi = useDocumentApiValidation(() => documento.raw?.value ?? '')
 const emailApi = useEmailApiValidation(() => email.value)
 
 const salvando = ref(false)
@@ -126,33 +123,29 @@ const buscandoCep = ref(false)
 const erros = reactive({})
 
 const form = reactive({
-  categoria: 'client', // 'client' | 'supplier'
-  type: 'individual', // 'individual' | 'company'
+  category: 'client',
+  type: 'individual',
   name: '',
-  // Exclusivos de Pessoa Jurídica
-  nomeFantasia: '',
-  inscricaoEstadual: '',
-  pessoaContato: '',
-  // Exclusivos de Pessoa Física
-  genero: 'other', // 'male' | 'female' | 'other'
-  nascimento: '',
-  // Endereço estruturado
-  cep_: '', // placeholder — cep é controlado pelo composable `cep`
-  logradouro: '',
-  numero: '',
-  complemento: '',
-  bairro: '',
-  cidade: '',
-  uf: '',
-  ativo: true,
+  trade_name: '',
+  state_registration: '',
+  contact_person: '',
+  gender: 'other',
+  birth_date: '',
+  street: '',
+  number: '',
+  complement: '',
+  neighborhood: '',
+  city: '',
+  state: '',
+  active: true,
 })
 
-// snapshot dos valores originais (formato "front") — usado pra detectar o que mudou no modo edição
+// snapshot dos valores originais — usado pra detectar o que mudou no modo edição
 let snapshot = null
 
 const modoEdicao = computed(() => !!props.pessoa)
 
-// título do dialog: usa as props customizáveis (default = "Nova/Editar pessoa")
+// título do dialog: usa as props customizáveis
 const tituloModal = computed(() => (modoEdicao.value ? props.tituloEdicao : props.tituloCriacao))
 
 // gênero/nascimento só fazem sentido pra pessoa física
@@ -161,15 +154,14 @@ const ehPessoaFisica = computed(() => form.type === 'individual')
 const ehPessoaJuridica = computed(() => form.type === 'company')
 
 // exatamente 11 dígitos é um CPF completo — trava o tipo em "física"
-const documentoEhCPF = computed(() => documento.raw.value.length === 11)
+const documentoEhCPF = computed(() => (documento.raw?.value ?? '').length === 11)
 // mais de 11 dígitos só pode ser CNPJ — trava o tipo em "jurídica"
-const documentoEhCNPJ = computed(() => documento.raw.value.length > 11)
+const documentoEhCNPJ = computed(() => (documento.raw?.value ?? '').length > 11)
 
 // fornecedor só pode ser pessoa jurídica — categoria também trava o tipo
-const categoriaEhFornecedor = computed(() => form.categoria === 'supplier')
+const categoriaEhFornecedor = computed(() => form.category === 'supplier')
 
-// true sempre que algo externo (documento ou categoria) já "decidiu" o tipo —
-// usado pra desabilitar o Select de Tipo
+// true sempre que algo externo (documento ou categoria) já "decidiu" o tipo
 const tipoTravado = computed(
   () => documentoEhCPF.value || documentoEhCNPJ.value || categoriaEhFornecedor.value,
 )
@@ -181,32 +173,31 @@ const motivoTravamentoTipo = computed(() => {
   return ''
 })
 
-// compara reativamente o estado atual do form com o snapshot original —
-// no modo criação sempre é true (não há "original" pra comparar)
+// compara reativamente o estado atual do form com o snapshot original
 const temAlteracoes = computed(() => {
   if (!modoEdicao.value) return true
   if (!snapshot) return true
 
   return (
-    form.categoria !== snapshot.categoria ||
+    form.category !== snapshot.category ||
     form.type !== snapshot.type ||
-    form.nome !== snapshot.nome ||
-    documento.raw.value !== snapshot.documento ||
-    form.nomeFantasia !== snapshot.nomeFantasia ||
-    form.inscricaoEstadual !== snapshot.inscricaoEstadual ||
-    form.pessoaContato !== snapshot.pessoaContato ||
-    form.genero !== snapshot.genero ||
-    form.nascimento !== snapshot.nascimento ||
-    telefone.raw.value !== snapshot.telefone ||
+    form.name !== snapshot.name ||
+    (documento.raw?.value ?? '') !== snapshot.document ||
+    form.trade_name !== snapshot.trade_name ||
+    form.state_registration !== snapshot.state_registration ||
+    form.contact_person !== snapshot.contact_person ||
+    form.gender !== snapshot.gender ||
+    form.birth_date !== snapshot.birth_date ||
+    (telefone.raw?.value ?? '') !== snapshot.phone ||
     email.value !== snapshot.email ||
-    cep.raw.value !== snapshot.cep ||
-    form.logradouro !== snapshot.logradouro ||
-    form.numero !== snapshot.numero ||
-    form.complemento !== snapshot.complemento ||
-    form.bairro !== snapshot.bairro ||
-    form.cidade !== snapshot.cidade ||
-    form.uf !== snapshot.uf ||
-    form.ativo !== snapshot.ativo
+    (cep.raw?.value ?? '') !== snapshot.zip_code ||
+    form.street !== snapshot.street ||
+    form.number !== snapshot.number ||
+    form.complement !== snapshot.complement ||
+    form.neighborhood !== snapshot.neighborhood ||
+    form.city !== snapshot.city ||
+    form.state !== snapshot.state ||
+    form.active !== snapshot.active
   )
 })
 
@@ -220,22 +211,16 @@ function dataLocalHoje() {
 
 const hoje = dataLocalHoje()
 
-// normaliza datas vindas da API pro formato do <input type="date"> (AAAA-MM-DD).
-// A API de documento retorna a data de nascimento no formato brasileiro
-// "DD/MM/AAAA" (ex.: "20/02/2001"); aqui detectamos esse padrão e convertemos.
 function paraDataInput(valor) {
   if (!valor) return ''
 
   const str = String(valor)
-
-  // formato brasileiro vindo da API de CPF/CNPJ: DD/MM/AAAA
   const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
   if (brMatch) {
     const [, dia, mes, ano] = brMatch
     return `${ano}-${mes}-${dia}`
   }
 
-  // já em formato ISO (AAAA-MM-DD ou AAAA-MM-DDTHH:mm:ss...)
   return str.slice(0, 10)
 }
 
@@ -246,93 +231,82 @@ const emailModel = computed({
   },
 })
 
-const nomeFantasiaModel = computed({
-  get: () => form.nomeFantasia,
+const tradeNameModel = computed({
+  get: () => form.trade_name,
   set: (v) => {
-    form.nomeFantasia = (v ?? '').slice(0, NOME_FANTASIA_MAX)
+    form.trade_name = (v ?? '').slice(0, NOME_FANTASIA_MAX)
   },
 })
 
-const inscricaoEstadualModel = computed({
-  get: () => form.inscricaoEstadual,
+const stateRegistrationModel = computed({
+  get: () => form.state_registration,
   set: (v) => {
-    form.inscricaoEstadual = (v ?? '').slice(0, IE_MAX)
+    form.state_registration = (v ?? '').slice(0, IE_MAX)
   },
 })
 
-const pessoaContatoModel = computed({
-  get: () => form.pessoaContato,
+const contactPersonModel = computed({
+  get: () => form.contact_person,
   set: (v) => {
-    form.pessoaContato = (v ?? '').slice(0, CONTATO_MAX)
+    form.contact_person = (v ?? '').slice(0, CONTATO_MAX)
   },
 })
 
-const logradouroModel = computed({
-  get: () => form.logradouro,
+const streetModel = computed({
+  get: () => form.street,
   set: (v) => {
-    form.logradouro = (v ?? '').slice(0, LOGRADOURO_MAX)
+    form.street = (v ?? '').slice(0, LOGRADOURO_MAX)
   },
 })
 
-const numeroModel = computed({
-  get: () => form.numero,
+const numberModel = computed({
+  get: () => form.number,
   set: (v) => {
-    form.numero = (v ?? '').slice(0, NUMERO_MAX)
+    form.number = (v ?? '').slice(0, NUMERO_MAX)
   },
 })
 
-const complementoModel = computed({
-  get: () => form.complemento,
+const complementModel = computed({
+  get: () => form.complement,
   set: (v) => {
-    form.complemento = (v ?? '').slice(0, COMPLEMENTO_MAX)
+    form.complement = (v ?? '').slice(0, COMPLEMENTO_MAX)
   },
 })
 
-const bairroModel = computed({
-  get: () => form.bairro,
+const neighborhoodModel = computed({
+  get: () => form.neighborhood,
   set: (v) => {
-    form.bairro = (v ?? '').slice(0, BAIRRO_MAX)
+    form.neighborhood = (v ?? '').slice(0, BAIRRO_MAX)
   },
 })
 
-const cidadeModel = computed({
-  get: () => form.cidade,
+const cityModel = computed({
+  get: () => form.city,
   set: (v) => {
-    form.cidade = (v ?? '').slice(0, CIDADE_MAX)
+    form.city = (v ?? '').slice(0, CIDADE_MAX)
   },
 })
 
-const ufModel = computed({
-  get: () => form.uf,
+const stateModel = computed({
+  get: () => form.state,
   set: (v) => {
-    form.uf = (v ?? '')
+    form.state = (v ?? '')
       .toUpperCase()
       .replace(/[^A-Z]/g, '')
       .slice(0, 2)
   },
 })
 
-// 🟢 NOVO: estado do combobox de UF (Popover + Command).
 const ufAberto = ref(false)
+const ufSelecionada = computed(() => UFS.find((u) => u.sigla === form.state) || null)
 
-// nome completo da UF selecionada — mostrado no botão do combobox
-const ufSelecionada = computed(() => UFS.find((u) => u.sigla === form.uf) || null)
-
-// 🟢 NOVO: combobox de Cidade (Popover + Command), nos mesmos moldes do de UF.
-// Diferente da UF (lista fixa de 27 itens), a lista de cidades vem da API do
-// IBGE com TODOS os municípios do Brasil — carregada uma única vez, sob
-// demanda (só quando o usuário abre o combobox pela primeira vez).
-// Isso permite digitar a cidade sem precisar escolher a UF antes: ao
-// selecionar a cidade, a UF correspondente é preenchida automaticamente.
 const cidadeAberta = ref(false)
 const buscaCidade = ref('')
-const municipios = ref([]) // [{ nome, uf }] — todos os municípios do Brasil
+const municipios = ref([])
 const municipiosCarregados = ref(false)
 const carregandoMunicipios = ref(false)
 const erroCarregarMunicipios = ref(false)
 
-// remove acentos e normaliza caixa — usado pra comparar nomes de cidade
-// digitados livremente (ex.: "sao paulo" precisa encontrar "São Paulo")
 function normalizarTexto(valor) {
   return (valor ?? '')
     .normalize('NFD')
@@ -354,9 +328,6 @@ async function carregarMunicipios() {
     municipios.value = dados
       .map((m) => ({
         nome: m?.nome ?? '',
-        // a API do IBGE aninha a UF dentro de microrregiao/mesorregiao;
-        // o fallback cobre a variação mais nova (regiao-imediata), caso a
-        // estrutura mude no futuro.
         uf:
           m?.microrregiao?.mesorregiao?.UF?.sigla ??
           m?.['regiao-imediata']?.['regiao-intermediaria']?.UF?.sigla ??
@@ -365,23 +336,16 @@ async function carregarMunicipios() {
       .filter((m) => m.nome && m.uf)
     municipiosCarregados.value = true
   } catch {
-    // API fora do ar / sem internet: o template cai no fallback de texto livre
     erroCarregarMunicipios.value = true
   } finally {
     carregandoMunicipios.value = false
   }
 }
 
-// carrega a lista nacional assim que o combobox de cidade é aberto pela
-// primeira vez (evita baixar ~5.500 municípios sem necessidade)
 watch(cidadeAberta, (aberto) => {
   if (aberto) carregarMunicipios()
 })
 
-// filtra localmente (sem nova requisição a cada letra digitada), exige ao
-// menos 2 letras, e prioriza: 1) cidades da UF já selecionada, 2) cidades
-// cujo nome começa com o termo buscado, 3) ordem alfabética. Limita a 30
-// resultados pra manter a lista curta e rápida de navegar.
 const cidadesFiltradas = computed(() => {
   const busca = normalizarTexto(buscaCidade.value)
   if (busca.length < 2) return []
@@ -389,9 +353,9 @@ const cidadesFiltradas = computed(() => {
   const encontrados = municipios.value.filter((m) => normalizarTexto(m.nome).includes(busca))
 
   encontrados.sort((a, b) => {
-    if (form.uf) {
-      const aMesmaUf = a.uf === form.uf
-      const bMesmaUf = b.uf === form.uf
+    if (form.state) {
+      const aMesmaUf = a.uf === form.state
+      const bMesmaUf = b.uf === form.state
       if (aMesmaUf && !bMesmaUf) return -1
       if (!aMesmaUf && bMesmaUf) return 1
     }
@@ -407,30 +371,25 @@ const cidadesFiltradas = computed(() => {
   return encontrados.slice(0, 30)
 })
 
-// ao selecionar uma cidade da lista (clique ou teclado), preenche cidade E
-// UF juntas a partir do mesmo registro do IBGE — é o que garante que
-// "Dourados" sempre puxe automaticamente "MS".
 function selecionarCidade(municipio) {
-  form.cidade = municipio.nome.slice(0, CIDADE_MAX)
-  form.uf = municipio.uf
+  form.city = municipio.nome.slice(0, CIDADE_MAX)
+  form.state = municipio.uf
   cidadeAberta.value = false
   buscaCidade.value = ''
 }
 
 function selecionarUf(sigla) {
-  const ufAnterior = form.uf
-  ufModel.value = sigla
+  const ufAnterior = form.state
+  stateModel.value = sigla
   ufAberto.value = false
 
-  // troca manual de UF: a cidade selecionada anteriormente pode não
-  // pertencer ao novo estado, então limpamos pra evitar inconsistência.
   if (sigla !== ufAnterior) {
-    form.cidade = ''
+    form.city = ''
   }
 }
 
 const documentoBadge = computed(() => {
-  if (!documento.raw.value) {
+  if (!documento.raw?.value) {
     return { texto: 'CPF ou CNPJ', classe: 'bg-muted text-muted-foreground' }
   }
   return documento.tipo.value === 'CPF'
@@ -445,32 +404,21 @@ watch(
   },
 )
 
-// assim que o documento vira CNPJ (mais de 11 dígitos), força o tipo pra jurídica.
 watch(documentoEhCNPJ, (ehCnpj) => {
   if (ehCnpj) form.type = 'company'
 })
 
-// assim que o documento fecha um CPF (11 dígitos), força o tipo pra física —
-// exceto se a categoria já for Fornecedor, que é sempre pessoa jurídica.
 watch(documentoEhCPF, (ehCpf) => {
   if (ehCpf && !categoriaEhFornecedor.value) form.type = 'individual'
 })
 
-// Fornecedor é sempre pessoa jurídica: ao selecionar essa categoria,
-// trava o tipo automaticamente. Isso vale tanto pra quando o usuário troca
-// manualmente o Select quanto para quando `categoriaPadrao` já inicia o
-// formulário como 'supplier' (ver preencherFormulario).
 watch(
-  () => form.categoria,
-  (categoria) => {
-    if (categoria === 'supplier') form.type = 'company'
+  () => form.category,
+  (category) => {
+    if (category === 'supplier') form.type = 'company'
   },
 )
 
-// trava "dura": além do Select ficar desabilitado (ver template), qualquer
-// tentativa de mudar form.type enquanto algo já define o tipo é revertida na
-// hora. Também é aqui que limpamos os campos exclusivos do tipo anterior,
-// pra nunca enviar dado de PF numa PJ (ou vice-versa).
 watch(
   () => form.type,
   (tipo) => {
@@ -484,88 +432,94 @@ watch(
     }
 
     if (tipo === 'company') {
-      form.genero = 'other'
-      form.nascimento = ''
-      delete erros.nascimento
+      form.gender = 'other'
+      form.birth_date = ''
+      delete erros.birth_date
     } else {
-      form.nomeFantasia = ''
-      form.inscricaoEstadual = ''
-      form.pessoaContato = ''
-      delete erros.nomeFantasia
-      delete erros.inscricaoEstadual
-      delete erros.pessoaContato
+      form.trade_name = ''
+      form.state_registration = ''
+      form.contact_person = ''
+      delete erros.trade_name
+      delete erros.state_registration
+      delete erros.contact_person
     }
   },
 )
 
-// 🟢 auto-preenchimento: assim que a consulta de CPF/CNPJ encontra um
-// registro (documentoApi.status === 'found'), preenche automaticamente
-// nome (e, se for CPF, nascimento/gênero).
-//
-// A API devolve o gênero como uma letra única ("M" / "F"), então aceitamos
-// tanto a letra quanto a palavra por extenso.
+// Auto-preenchimento assim que a consulta de CPF/CNPJ encontra um registro
 watch(
   () => documentoApi.status,
   (status) => {
     if (status !== 'found') return
 
     if (documentoApi.nome) {
-      form.nome = documentoApi.nome.slice(0, NOME_MAX)
+      form.name = documentoApi.nome.slice(0, NOME_MAX)
     }
+
     if (documentoApi.tipo === 'CPF' && ehPessoaFisica.value) {
       if (documentoApi.nascimento) {
-        form.nascimento = paraDataInput(documentoApi.nascimento)
+        form.birth_date = paraDataInput(documentoApi.nascimento)
       }
       if (documentoApi.genero) {
         const generoNormalizado = String(documentoApi.genero).toLowerCase()
         if (generoNormalizado === 'male' || generoNormalizado === 'm') {
-          form.genero = 'male'
+          form.gender = 'male'
         } else if (generoNormalizado === 'female' || generoNormalizado === 'f') {
-          form.genero = 'female'
+          form.gender = 'female'
         }
       }
     }
+
     if (documentoApi.tipo === 'CNPJ' && ehPessoaJuridica.value) {
       if (documentoApi.fantasia) {
-        form.nomeFantasia = documentoApi.fantasia.slice(0, NOME_FANTASIA_MAX)
+        form.trade_name = documentoApi.fantasia.slice(0, NOME_FANTASIA_MAX)
       }
       if (documentoApi.cidade) {
-        form.cidade = documentoApi.cidade.slice(0, CIDADE_MAX)
+        form.city = documentoApi.cidade.slice(0, CIDADE_MAX)
       }
       if (documentoApi.uf) {
-        form.uf = String(documentoApi.uf).toUpperCase().slice(0, 2)
+        form.state = String(documentoApi.uf).toUpperCase().slice(0, 2)
       }
     }
   },
 )
 
-// 🟢 autofill de endereço via ViaCEP assim que o CEP atinge 8 dígitos
-watch(cep.raw, async (valor) => {
-  if (valor.length !== 8) return
-
-  buscandoCep.value = true
-  try {
-    const resposta = await fetch(`https://viacep.com.br/ws/${valor}/json/`)
-    const dados = await resposta.json()
-
-    if (dados.erro) return
-
-    form.logradouro = (dados.logradouro ?? '').slice(0, LOGRADOURO_MAX)
-    form.bairro = (dados.bairro ?? '').slice(0, BAIRRO_MAX)
-    form.cidade = (dados.localidade ?? '').slice(0, CIDADE_MAX)
-    form.uf = (dados.uf ?? '').toUpperCase().slice(0, 2)
-  } catch {
-    // silencioso: autofill é um bônus de UX, não bloqueia o cadastro
-  } finally {
-    buscandoCep.value = false
-  }
-})
-
-// remove erros assim que o usuário corrige os respectivos campos
+// Auto-preenchimento de endereço via ViaCEP
 watch(
-  () => form.nascimento,
+  () => cep.raw?.value,
+  async (valor) => {
+    if (!valor || valor.length !== 8) return
+
+    buscandoCep.value = true
+    try {
+      const resposta = await fetch(`https://viacep.com.br/ws/${valor}/json/`)
+      const dados = await resposta.json()
+
+      if (dados.erro) return
+
+      form.street = (dados.logradouro ?? '').slice(0, LOGRADOURO_MAX)
+      form.neighborhood = (dados.bairro ?? '').slice(0, BAIRRO_MAX)
+      form.city = (dados.localidade ?? '').slice(0, CIDADE_MAX)
+      form.state = (dados.uf ?? '').toUpperCase().slice(0, 2)
+    } catch {
+      // Silencioso
+    } finally {
+      buscandoCep.value = false
+    }
+  },
+)
+
+// Remove erros assim que o usuário digita/corrige
+watch(
+  () => form.category,
   (valor) => {
-    if (erros.nascimento && (!valor || valor <= hoje)) delete erros.nascimento
+    if (erros.category && valor) delete erros.category
+  },
+)
+watch(
+  () => form.birth_date,
+  (valor) => {
+    if (erros.birth_date && (!valor || valor <= hoje)) delete erros.birth_date
   },
 )
 watch(
@@ -575,27 +529,27 @@ watch(
   },
 )
 watch(
-  () => documento.raw.value,
+  () => documento.raw?.value,
   (valor) => {
-    if (erros.documento && (!valor || SOMENTE_DIGITOS.test(valor))) delete erros.documento
+    if (erros.document && (!valor || SOMENTE_DIGITOS.test(valor))) delete erros.document
   },
 )
 watch(
-  () => telefone.raw.value,
+  () => telefone.raw?.value,
   (valor) => {
-    if (erros.telefone && (!valor || SOMENTE_DIGITOS.test(valor))) delete erros.telefone
+    if (erros.phone && (!valor || SOMENTE_DIGITOS.test(valor))) delete erros.phone
   },
 )
 watch(
-  () => cep.raw.value,
+  () => cep.raw?.value,
   (valor) => {
-    if (erros.cep && (!valor || SOMENTE_DIGITOS.test(valor))) delete erros.cep
+    if (erros.zip_code && (!valor || SOMENTE_DIGITOS.test(valor))) delete erros.zip_code
   },
 )
 watch(
-  () => form.nome,
+  () => form.name,
   (valor) => {
-    if (erros.nome && valor.trim().length >= 3) delete erros.nome
+    if (erros.name && valor.trim().length >= 3) delete erros.name
   },
 )
 watch(
@@ -605,81 +559,75 @@ watch(
   },
 )
 
-// popula o formulário com os dados da pessoa (modo edição) ou zera tudo (modo criação)
 function preencherFormulario() {
   const p = props.pessoa
 
   if (p) {
-    form.categoria = p.categoria ?? 'client'
+    form.category = p.category ?? 'client'
     form.type = p.type ?? 'individual'
-    form.nome = p.nome ?? ''
-    form.nomeFantasia = p.nomeFantasia ?? ''
-    form.inscricaoEstadual = p.inscricaoEstadual ?? ''
-    form.pessoaContato = p.pessoaContato ?? ''
-    form.genero = p.genero ?? 'other'
-    form.nascimento = paraDataInput(p.nascimento)
-    form.logradouro = p.logradouro ?? ''
-    form.numero = p.numero ?? ''
-    form.complemento = p.complemento ?? ''
-    form.bairro = p.bairro ?? ''
-    form.cidade = p.cidade ?? ''
-    form.uf = p.uf ?? ''
-    form.ativo = p.status ? p.status === 'ativo' : (p.ativo ?? true)
-    documento.setValue(p.documento ?? '')
-    telefone.setValue(p.telefone ?? '')
-    cep.setValue(p.cep ?? '')
+    form.name = p.name ?? ''
+    form.trade_name = p.trade_name ?? ''
+    form.state_registration = p.state_registration ?? ''
+    form.contact_person = p.contact_person ?? ''
+    form.gender = p.gender ?? 'other'
+    form.birth_date = paraDataInput(p.birth_date)
+    form.street = p.street ?? ''
+    form.number = p.number ?? ''
+    form.complement = p.complement ?? ''
+    form.neighborhood = p.neighborhood ?? ''
+    form.city = p.city ?? ''
+    form.state = p.state ?? ''
+    form.active = p.active ?? true
+
+    documento.setValue(p.document ?? '')
+    telefone.setValue(p.phone ?? '')
+    cep.setValue(p.zip_code ?? '')
     email.value = p.email ?? ''
   } else {
-    // 🟢 NOVO: no modo criação, usa `categoriaPadrao` se ela foi passada
-    // (ex.: modal de fornecedor abre direto com categoria = 'supplier',
-    // o que já dispara o watch acima e trava o tipo em "jurídica").
-    form.categoria = props.categoriaPadrao ?? 'client'
+    form.category = props.categoriaPadrao ?? 'client'
     form.type = 'individual'
-    form.nome = ''
-    form.nomeFantasia = ''
-    form.inscricaoEstadual = ''
-    form.pessoaContato = ''
-    form.genero = 'other'
-    form.nascimento = ''
-    form.logradouro = ''
-    form.numero = ''
-    form.complemento = ''
-    form.bairro = ''
-    form.cidade = ''
-    form.uf = ''
-    form.ativo = true
+    form.name = ''
+    form.trade_name = ''
+    form.state_registration = ''
+    form.contact_person = ''
+    form.gender = 'other'
+    form.birth_date = ''
+    form.street = ''
+    form.number = ''
+    form.complement = ''
+    form.neighborhood = ''
+    form.city = ''
+    form.state = ''
+    form.active = true
+
     documento.setValue('')
     telefone.setValue('')
     cep.setValue('')
     email.value = ''
   }
 
-  email.status = 'idle'
-  buscaCidade.value = ''
-  Object.keys(erros).forEach((chave) => delete erros[chave])
-
-  // captura o snapshot DEPOIS de preencher — é a "foto" do estado original pro diff
+  // SNAPSHOT EM INGLÊS E PROTEGIDO
   snapshot = p
     ? {
-        categoria: form.categoria,
+        category: form.category,
         type: form.type,
-        nome: form.nome,
-        documento: documento.raw.value,
-        nomeFantasia: form.nomeFantasia,
-        inscricaoEstadual: form.inscricaoEstadual,
-        pessoaContato: form.pessoaContato,
-        genero: form.genero,
-        nascimento: form.nascimento,
-        telefone: telefone.raw.value,
+        name: form.name,
+        document: documento.raw?.value ?? '',
+        trade_name: form.trade_name,
+        state_registration: form.state_registration,
+        contact_person: form.contact_person,
+        gender: form.gender,
+        birth_date: form.birth_date,
+        phone: telefone.raw?.value ?? '',
         email: email.value,
-        cep: cep.raw.value,
-        logradouro: form.logradouro,
-        numero: form.numero,
-        complemento: form.complemento,
-        bairro: form.bairro,
-        cidade: form.cidade,
-        uf: form.uf,
-        ativo: form.ativo,
+        zip_code: cep.raw?.value ?? '',
+        street: form.street,
+        number: form.number,
+        complement: form.complement,
+        neighborhood: form.neighborhood,
+        city: form.city,
+        state: form.state,
+        active: form.active,
       }
     : null
 }
@@ -690,25 +638,25 @@ function fechar() {
 
 function montarPayload() {
   return {
-    categoria: form.categoria,
+    category: form.category,
     type: form.type,
-    nome: form.nome,
-    documento: documento.raw.value,
-    nomeFantasia: ehPessoaJuridica.value ? form.nomeFantasia : '',
-    inscricaoEstadual: ehPessoaJuridica.value ? form.inscricaoEstadual : '',
-    pessoaContato: ehPessoaJuridica.value ? form.pessoaContato : '',
-    genero: ehPessoaFisica.value ? form.genero : null,
-    nascimento: ehPessoaFisica.value ? form.nascimento : null,
-    telefone: telefone.raw.value,
+    name: form.name,
+    document: documento.raw?.value || '',
+    trade_name: ehPessoaJuridica.value ? form.trade_name : '',
+    state_registration: ehPessoaJuridica.value ? form.state_registration : '',
+    contact_person: ehPessoaJuridica.value ? form.contact_person : '',
+    gender: ehPessoaFisica.value ? form.gender : null,
+    birth_date: ehPessoaFisica.value ? form.birth_date : null,
+    phone: telefone.raw?.value || '',
     email: email.value,
-    cep: cep.raw.value,
-    logradouro: form.logradouro,
-    numero: form.numero,
-    complemento: form.complemento,
-    bairro: form.bairro,
-    cidade: form.cidade,
-    uf: form.uf,
-    ativo: form.ativo,
+    zip_code: cep.raw?.value || '',
+    street: form.street,
+    number: form.number,
+    complement: form.complement,
+    neighborhood: form.neighborhood,
+    city: form.city,
+    state: form.state,
+    active: form.active,
   }
 }
 
@@ -724,31 +672,26 @@ function validar() {
     })
   }
 
-  // documento: obrigatório numérico — só dígitos, sem letras ou símbolos soltos
-  if (!documento.raw.value) {
-    erros.documento = 'Informe o CPF ou CNPJ.'
+  if (!documento.raw?.value) {
+    erros.document = 'Informe o CPF ou CNPJ.'
   } else if (!SOMENTE_DIGITOS.test(documento.raw.value)) {
-    erros.documento = 'Documento deve conter apenas números.'
+    erros.document = 'Documento deve conter apenas números.'
   } else if (!documento.isValid.value) {
-    erros.documento = `${documento.tipo.value} inválido.`
+    erros.document = `${documento.tipo.value} inválido.`
   }
 
-  // telefone: opcional, mas se preenchido precisa ser só dígitos
-  if (telefone.raw.value && !SOMENTE_DIGITOS.test(telefone.raw.value)) {
-    erros.telefone = 'Telefone deve conter apenas números.'
+  if (telefone.raw?.value && !SOMENTE_DIGITOS.test(telefone.raw.value)) {
+    erros.phone = 'Telefone deve conter apenas números.'
   }
 
-  // cep: opcional, mas se preenchido precisa ser só dígitos
-  if (cep.raw.value && !SOMENTE_DIGITOS.test(cep.raw.value)) {
-    erros.cep = 'CEP deve conter apenas números.'
+  if (cep.raw?.value && !SOMENTE_DIGITOS.test(cep.raw.value)) {
+    erros.zip_code = 'CEP deve conter apenas números.'
   }
 
-  // ninguém nasce no futuro — bloqueio de segurança além do `max` do input
-  if (form.nascimento && form.nascimento > hoje) {
-    erros.nascimento = 'Data de nascimento não pode ser no futuro.'
+  if (form.birth_date && form.birth_date > hoje) {
+    erros.birth_date = 'Data de nascimento não pode ser no futuro.'
   }
 
-  // e-mail: opcional, mas se preenchido precisa ser válido
   if (email.value.trim() && email.status === 'invalid') {
     erros.email = 'Informe um e-mail válido.'
   }
@@ -757,91 +700,57 @@ function validar() {
     return null
   }
 
-  return resultado.data ?? payload
+  return { ...payload, ...(resultado.data ?? {}) }
 }
 
-// mapa front -> API. Usado tanto pra montar o payload completo (criação e
-// fallback de atualização completa) quanto pra montar o diff (PATCH).
-// 🔴 CORRIGIDO: faltavam 'documento' e 'cep', então esses dois campos nunca
-// chegavam traduzidos pro backend (por isso o Laravel reclamava de
-// "name"/"document" mesmo com os campos preenchidos no formulário — o
-// payload enviado tinha 'nome'/'documento', que a API não reconhece).
-const CAMPO_PARA_API = {
-  categoria: 'category',
-  type: 'type',
-  nome: 'name',
-  documento: 'document',
-  nomeFantasia: 'trade_name',
-  inscricaoEstadual: 'state_registration',
-  pessoaContato: 'contact_person',
-  telefone: 'phone',
-  email: 'email',
-  genero: 'gender',
-  nascimento: 'birth_date',
-  cep: 'zip_code',
-  logradouro: 'street',
-  numero: 'number',
-  complemento: 'complement',
-  bairro: 'neighborhood',
-  cidade: 'city',
-  uf: 'state',
-  ativo: 'active',
-}
+function obterCamposAlterados(payloadAtual) {
+  if (!snapshot) return payloadAtual
 
-// 🟢 NOVO: traduz o payload inteiro (formato front, em português) pro
-// formato que a API espera (em inglês). Usado na criação e no fallback de
-// atualização completa — antes esses dois fluxos enviavam o payload cru,
-// com as chaves em português, e a API não reconhecia nenhum campo.
-function converterParaApi(payloadFront) {
-  const payloadApi = {}
-  for (const [campoFront, valor] of Object.entries(payloadFront)) {
-    const campoApi = CAMPO_PARA_API[campoFront]
-    if (campoApi) {
-      payloadApi[campoApi] = valor
-    }
-  }
-  return payloadApi
-}
-
-// compara o payload atual (formato front) com o snapshot e devolve só o que mudou,
-// já convertido pro formato da API (ex.: 'nome' -> 'name')
-function calcularDiff(payloadAtual) {
   const diff = {}
-
-  for (const [campoFront, valorAtual] of Object.entries(payloadAtual)) {
-    const valorOriginal = snapshot ? snapshot[campoFront] : undefined
-    if (valorAtual !== valorOriginal) {
-      const campoApi = CAMPO_PARA_API[campoFront]
-      if (campoApi) {
-        diff[campoApi] = valorAtual
-      }
+  for (const [campo, valorAtual] of Object.entries(payloadAtual)) {
+    if (valorAtual !== snapshot[campo]) {
+      diff[campo] = valorAtual
     }
   }
-
   return diff
 }
 
-// Mapeia erros de validação vindos do Laravel (em inglês) de volta pros campos do form (português)
-const MAPA_CAMPOS_API = {
-  category: 'categoria',
-  type: 'type',
-  name: 'nome',
-  document: 'documento',
-  trade_name: 'nomeFantasia',
-  state_registration: 'inscricaoEstadual',
-  contact_person: 'pessoaContato',
-  phone: 'telefone',
-  email: 'email',
-  gender: 'genero',
-  birth_date: 'nascimento',
-  zip_code: 'cep',
-  street: 'logradouro',
-  number: 'numero',
-  complement: 'complemento',
-  neighborhood: 'bairro',
-  city: 'cidade',
-  state: 'uf',
-  active: 'ativo',
+const ROTULO_CAMPO = {
+  category: 'Categoria',
+  type: 'Tipo',
+  name: 'Nome',
+  document: 'CPF/CNPJ',
+  trade_name: 'Nome fantasia',
+  state_registration: 'Inscrição estadual',
+  contact_person: 'Pessoa de contato',
+  phone: 'Telefone',
+  email: 'E-mail',
+  gender: 'Gênero',
+  birth_date: 'Data de nascimento',
+  zip_code: 'CEP',
+  street: 'Logradouro',
+  number: 'Número',
+  complement: 'Complemento',
+  neighborhood: 'Bairro',
+  city: 'Cidade',
+  state: 'UF',
+  active: 'Situação',
+}
+
+function traduzirMensagemApi(mensagem, campo) {
+  const rotulo = ROTULO_CAMPO[campo] || 'Campo'
+  const texto = String(mensagem ?? '').toLowerCase()
+
+  if (texto.includes('is required')) return `${rotulo} é obrigatório.`
+  if (texto.includes('already been taken') || texto.includes('unique')) {
+    return `${rotulo} já está cadastrado.`
+  }
+  if (texto.includes('valid email')) return 'Informe um e-mail válido.'
+  if (texto.includes('must be a string') || texto.includes('invalid')) {
+    return `${rotulo} inválido.`
+  }
+
+  return mensagem
 }
 
 function aplicarErrosDaApi(e) {
@@ -850,13 +759,10 @@ function aplicarErrosDaApi(e) {
 
   if (apiErrors) {
     Object.entries(apiErrors).forEach(([campo, mensagens]) => {
-      const chave = MAPA_CAMPOS_API[campo] || campo
       const mensagemOriginal = Array.isArray(mensagens) ? mensagens[0] : mensagens
 
-      // 🟢 Tratamento para erro de CPF/CNPJ duplicado
-      if (campo === 'document' || chave === 'documento') {
+      if (campo === 'document') {
         const textoErro = String(mensagemOriginal).toLowerCase()
-
         if (
           textoErro.includes('taken') ||
           textoErro.includes('already been taken') ||
@@ -864,17 +770,16 @@ function aplicarErrosDaApi(e) {
           textoErro.includes('já existe') ||
           textoErro.includes('unique')
         ) {
-          erros.documento = 'Já existe um cliente ou fornecedor cadastrado com este CPF/CNPJ.'
+          erros.document = 'Já existe um cliente ou fornecedor cadastrado com este CPF/CNPJ.'
           return
         }
       }
 
-      erros[chave] = mensagemOriginal
+      erros[campo] = traduzirMensagemApi(mensagemOriginal, campo)
     })
 
     erro('Confira os campos destacados antes de salvar.')
   } else {
-    // 🟢 Trata caso o backend retorne o erro na raiz da resposta 'message' em vez de 'errors'
     const msgBaixa = String(message).toLowerCase()
     if (
       msgBaixa.includes('taken') ||
@@ -882,7 +787,7 @@ function aplicarErrosDaApi(e) {
       msgBaixa.includes('ja existe') ||
       msgBaixa.includes('já existe')
     ) {
-      erros.documento = 'Já existe um cliente ou fornecedor cadastrado com este CPF/CNPJ.'
+      erros.document = 'Já existe um cliente ou fornecedor cadastrado com este CPF/CNPJ.'
       erro('Já existe um registro com este CPF/CNPJ.')
     } else {
       erro(message || 'Não foi possível salvar. Tente novamente.')
@@ -891,37 +796,22 @@ function aplicarErrosDaApi(e) {
 }
 
 async function salvar() {
-  if (salvando.value) return
-
-  const payload = validar()
-  if (!payload) {
-    erro('Confira os campos destacados antes de salvar.')
-    return
-  }
+  const payloadValidado = validar()
+  if (!payloadValidado) return
 
   salvando.value = true
   try {
     if (modoEdicao.value) {
-      const diff = calcularDiff(payload)
-
-      if (Object.keys(diff).length === 0) {
-        fechar()
-        return
+      if (props.aoAtualizarParcial) {
+        const payloadPatch = obterCamposAlterados(payloadValidado)
+        await props.aoAtualizarParcial(props.pessoa.id, payloadPatch)
+      } else {
+        await props.aoAtualizar(props.pessoa.id, payloadValidado)
       }
-
-      // 🔴 CORRIGIDO: fallback de atualização completa também precisa
-      // enviar o payload traduzido, não o payload cru em português.
-      const pessoaSalva = props.aoAtualizarParcial
-        ? await props.aoAtualizarParcial(props.pessoa.id, diff)
-        : await props.aoAtualizar(props.pessoa.id, converterParaApi(payload))
-
-      emit('updated', pessoaSalva)
+      emit('updated')
     } else {
-      // 🔴 CORRIGIDO: era `props.aoCriar(payload)`, enviando 'nome'/'documento'
-      // em vez de 'name'/'document' — por isso o Laravel dizia que os dois
-      // campos eram obrigatórios mesmo estando preenchidos no formulário.
-      const pessoaSalva = await props.aoCriar(converterParaApi(payload))
-      emit('created', pessoaSalva)
+      await props.aoCriar(payloadValidado)
+      emit('created')
     }
     fechar()
   } catch (e) {
@@ -931,7 +821,6 @@ async function salvar() {
   }
 }
 </script>
-
 <template>
   <Dialog :open="open" @update:open="(v) => emit('update:open', v)">
     <DialogContent
@@ -947,7 +836,6 @@ async function salvar() {
       </DialogHeader>
 
       <form class="space-y-4 pt-1" @submit.prevent="salvar">
-        <!-- Linha 1: Categoria, Tipo, Documento e Nome — tudo numa única faixa -->
         <section class="space-y-2">
           <h3 class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
             Identificação
@@ -958,7 +846,7 @@ async function salvar() {
               <label for="categoria" class="mb-1 block text-xs font-medium text-foreground">
                 Categoria <span class="text-destructive">*</span>
               </label>
-              <Select v-model="form.categoria" :disabled="categoriaFixa">
+              <Select v-model="form.category" :disabled="categoriaFixa">
                 <SelectTrigger id="categoria" class="h-9 w-full cursor-pointer text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -969,6 +857,9 @@ async function salvar() {
               </Select>
               <p v-if="categoriaFixa" class="mt-0.5 truncate text-[10px] text-muted-foreground">
                 Definido automaticamente para este cadastro.
+              </p>
+              <p v-if="erros.category" class="mt-0.5 text-[10px] text-destructive">
+                {{ erros.category }}
               </p>
             </div>
 
@@ -1003,8 +894,9 @@ async function salvar() {
                   class="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide transition-colors"
                   :class="documentoBadge.classe"
                 >
-                  {{ documentoBadge.texto }} </span
-                ><span class="text-destructive">*</span>
+                  {{ documentoBadge.texto }}
+                </span>
+                <span class="text-destructive">*</span>
               </label>
               <input
                 id="documento"
@@ -1013,11 +905,11 @@ async function salvar() {
                 inputmode="numeric"
                 placeholder="000.000.000-00"
                 class="h-9 w-full cursor-text rounded-md border border-input bg-transparent px-3 text-xs outline-none focus:ring-2 focus:ring-ring"
-                :aria-invalid="!!erros.documento"
+                :aria-invalid="!!erros.document"
                 @input="documento.onInput"
               />
-              <p v-if="erros.documento" class="mt-0.5 text-[10px] text-destructive">
-                {{ erros.documento }}
+              <p v-if="erros.document" class="mt-0.5 text-[10px] text-destructive">
+                {{ erros.document }}
               </p>
               <p
                 v-else-if="documentoApi.status !== 'idle'"
@@ -1062,29 +954,30 @@ async function salvar() {
               <div class="relative">
                 <Input
                   id="nome"
-                  v-model="form.nome"
+                  v-model="form.name"
                   :placeholder="
                     ehPessoaJuridica ? 'Ex.: Comércio Boa Vista Ltda' : 'Ex.: Ana Beatriz Souza'
                   "
                   :maxlength="NOME_MAX"
                   class="h-9 cursor-text pr-12 text-xs"
-                  :aria-invalid="!!erros.nome"
+                  :aria-invalid="!!erros.name"
                 />
                 <span
                   class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none text-[10px] font-medium tabular-nums transition-colors"
                   :class="
-                    form.nome.length >= NOME_MAX ? 'text-red-500' : 'text-muted-foreground/40'
+                    (form.name?.length || 0) >= NOME_MAX
+                      ? 'text-red-500'
+                      : 'text-muted-foreground/40'
                   "
                 >
-                  {{ form.nome.length }}/{{ NOME_MAX }}
+                  {{ form.name?.length || 0 }}/{{ NOME_MAX }}
                 </span>
               </div>
-              <p v-if="erros.nome" class="mt-0.5 text-[10px] text-destructive">{{ erros.nome }}</p>
+              <p v-if="erros.name" class="mt-0.5 text-[10px] text-destructive">{{ erros.name }}</p>
             </div>
           </div>
         </section>
 
-        <!-- Linha 2: Dados de PJ e PF lado a lado (só um lado fica ativo por vez) -->
         <section class="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div
             class="space-y-2 rounded-lg border border-dashed border-border p-3 transition-opacity"
@@ -1112,7 +1005,7 @@ async function salvar() {
                 </label>
                 <Input
                   id="nome-fantasia"
-                  v-model="nomeFantasiaModel"
+                  v-model="tradeNameModel"
                   placeholder="Ex.: Boa Vista"
                   :maxlength="NOME_FANTASIA_MAX"
                   :disabled="!ehPessoaJuridica"
@@ -1126,7 +1019,7 @@ async function salvar() {
                 </label>
                 <Input
                   id="ie"
-                  v-model="inscricaoEstadualModel"
+                  v-model="stateRegistrationModel"
                   placeholder="Ex.: ISENTO"
                   :maxlength="IE_MAX"
                   :disabled="!ehPessoaJuridica"
@@ -1143,7 +1036,7 @@ async function salvar() {
                 </label>
                 <Input
                   id="pessoa-contato"
-                  v-model="pessoaContatoModel"
+                  v-model="contactPersonModel"
                   placeholder="Ex.: Carlos"
                   :maxlength="CONTATO_MAX"
                   :disabled="!ehPessoaJuridica"
@@ -1174,7 +1067,7 @@ async function salvar() {
                 <label for="genero" class="mb-1 block text-[11px] font-medium text-foreground">
                   Gênero
                 </label>
-                <Select v-model="form.genero" :disabled="!ehPessoaFisica">
+                <Select v-model="form.gender" :disabled="!ehPessoaFisica">
                   <SelectTrigger id="genero" class="h-9 w-full cursor-pointer text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -1192,22 +1085,21 @@ async function salvar() {
                 </label>
                 <Input
                   id="nascimento"
-                  v-model="form.nascimento"
+                  v-model="form.birth_date"
                   type="date"
                   :max="hoje"
                   :disabled="!ehPessoaFisica"
                   class="h-9 cursor-text text-xs"
-                  :aria-invalid="!!erros.nascimento"
+                  :aria-invalid="!!erros.birth_date"
                 />
-                <p v-if="erros.nascimento" class="mt-0.5 text-[10px] text-destructive">
-                  {{ erros.nascimento }}
+                <p v-if="erros.birth_date" class="mt-0.5 text-[10px] text-destructive">
+                  {{ erros.birth_date }}
                 </p>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- Linha 3: Contato -->
         <section class="space-y-2 border-t border-border pt-3">
           <h3 class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
             Contato
@@ -1225,11 +1117,11 @@ async function salvar() {
                 inputmode="numeric"
                 placeholder="(67) 99999-0000"
                 class="h-9 w-full cursor-text rounded-md border border-input bg-transparent px-3 text-xs outline-none focus:ring-2 focus:ring-ring"
-                :aria-invalid="!!erros.telefone"
+                :aria-invalid="!!erros.phone"
                 @input="telefone.onInput"
               />
-              <p v-if="erros.telefone" class="mt-0.5 text-[10px] text-destructive">
-                {{ erros.telefone }}
+              <p v-if="erros.phone" class="mt-0.5 text-[10px] text-destructive">
+                {{ erros.phone }}
               </p>
             </div>
 
@@ -1294,7 +1186,6 @@ async function salvar() {
           </div>
         </section>
 
-        <!-- Linha 4: Endereço — em 2 fileiras, mais larga que comprida -->
         <section class="space-y-2 border-t border-border pt-3">
           <h3 class="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
             Endereço
@@ -1311,7 +1202,7 @@ async function salvar() {
                   inputmode="numeric"
                   placeholder="79000-000"
                   class="h-9 w-full cursor-text rounded-md border border-input bg-transparent px-3 pr-8 text-xs outline-none focus:ring-2 focus:ring-ring"
-                  :aria-invalid="!!erros.cep"
+                  :aria-invalid="!!erros.zip_code"
                   @input="cep.onInput"
                 />
                 <Loader2
@@ -1319,7 +1210,9 @@ async function salvar() {
                   class="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground"
                 />
               </div>
-              <p v-if="erros.cep" class="mt-0.5 text-[10px] text-destructive">{{ erros.cep }}</p>
+              <p v-if="erros.zip_code" class="mt-0.5 text-[10px] text-destructive">
+                {{ erros.zip_code }}
+              </p>
             </div>
 
             <div class="col-span-2 sm:col-span-4 lg:col-span-6">
@@ -1328,7 +1221,7 @@ async function salvar() {
               </label>
               <Input
                 id="logradouro"
-                v-model="logradouroModel"
+                v-model="streetModel"
                 placeholder="Rua, Avenida, Alameda…"
                 :maxlength="LOGRADOURO_MAX"
                 class="h-9 cursor-text text-xs"
@@ -1341,7 +1234,7 @@ async function salvar() {
               </label>
               <Input
                 id="numero"
-                v-model="numeroModel"
+                v-model="numberModel"
                 placeholder="Ex.: 1020"
                 :maxlength="NUMERO_MAX"
                 class="h-9 cursor-text text-xs"
@@ -1359,10 +1252,14 @@ async function salvar() {
                     role="combobox"
                     :aria-expanded="ufAberto"
                     class="h-9 w-full cursor-pointer justify-between px-3 text-xs font-normal"
-                    :aria-invalid="!!erros.uf"
+                    :aria-invalid="!!erros.state"
                   >
-                    <span :class="!form.uf ? 'text-muted-foreground' : ''">
-                      {{ form.uf ? `${form.uf} — ${ufSelecionada?.nome ?? ''}` : 'Selecione a UF' }}
+                    <span :class="!form.state ? 'text-muted-foreground' : ''">
+                      {{
+                        form.state
+                          ? `${form.state} — ${ufSelecionada?.nome ?? ''}`
+                          : 'Selecione a UF'
+                      }}
                     </span>
                     <ChevronsUpDown class="size-3.5 shrink-0 text-muted-foreground/60" />
                   </Button>
@@ -1386,7 +1283,7 @@ async function salvar() {
                             :class="
                               cn(
                                 'mr-2 size-3.5',
-                                form.uf === uf.sigla ? 'opacity-100' : 'opacity-0',
+                                form.state === uf.sigla ? 'opacity-100' : 'opacity-0',
                               )
                             "
                           />
@@ -1398,7 +1295,9 @@ async function salvar() {
                   </Command>
                 </PopoverContent>
               </Popover>
-              <p v-if="erros.uf" class="mt-0.5 text-[10px] text-destructive">{{ erros.uf }}</p>
+              <p v-if="erros.state" class="mt-0.5 text-[10px] text-destructive">
+                {{ erros.state }}
+              </p>
             </div>
 
             <div class="col-span-2 sm:col-span-3 lg:col-span-4">
@@ -1407,7 +1306,7 @@ async function salvar() {
               </label>
               <Input
                 id="complemento"
-                v-model="complementoModel"
+                v-model="complementModel"
                 placeholder="Apto, bloco, sala…"
                 :maxlength="COMPLEMENTO_MAX"
                 class="h-9 cursor-text text-xs"
@@ -1420,16 +1319,13 @@ async function salvar() {
               </label>
               <Input
                 id="bairro"
-                v-model="bairroModel"
+                v-model="neighborhoodModel"
                 placeholder="Ex.: Centro"
                 :maxlength="BAIRRO_MAX"
                 class="h-9 cursor-text text-xs"
               />
             </div>
 
-            <!-- 🟢 NOVO: combobox de Cidade — mesmo padrão do combobox de UF acima
-                 (Popover + Command), mas com lista nacional de municípios vinda do
-                 IBGE. Selecionar uma cidade preenche a UF automaticamente. -->
             <div class="col-span-2 sm:col-span-6 lg:col-span-4">
               <label for="cidade" class="mb-1 block text-xs font-medium text-foreground">
                 Cidade
@@ -1446,8 +1342,8 @@ async function salvar() {
                       :aria-expanded="cidadeAberta"
                       class="h-9 w-full cursor-pointer justify-between px-3 text-xs font-normal"
                     >
-                      <span :class="!form.cidade ? 'text-muted-foreground' : ''" class="truncate">
-                        {{ form.cidade || 'Selecione a cidade' }}
+                      <span :class="!form.city ? 'text-muted-foreground' : ''" class="truncate">
+                        {{ form.city || 'Selecione a cidade' }}
                       </span>
                       <Loader2
                         v-if="carregandoMunicipios"
@@ -1483,7 +1379,7 @@ async function salvar() {
                               :class="
                                 cn(
                                   'mr-2 size-3.5',
-                                  form.cidade === cidade.nome && form.uf === cidade.uf
+                                  form.city === cidade.nome && form.state === cidade.uf
                                     ? 'opacity-100'
                                     : 'opacity-0',
                                 )
@@ -1505,7 +1401,7 @@ async function salvar() {
               <template v-else>
                 <Input
                   id="cidade"
-                  v-model="cidadeModel"
+                  v-model="cityModel"
                   placeholder="Ex.: Dourados"
                   :maxlength="CIDADE_MAX"
                   class="h-9 cursor-text text-xs"
@@ -1518,7 +1414,6 @@ async function salvar() {
           </div>
         </section>
 
-        <!-- Situação: barra compacta, uma única linha -->
         <section
           class="flex items-center justify-between gap-3 rounded-md border border-input px-3 py-2"
         >
@@ -1530,7 +1425,7 @@ async function salvar() {
           </div>
           <Switch
             id="ativo"
-            v-model="form.ativo"
+            v-model="form.active"
             class="cursor-pointer data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-input"
           />
         </section>
