@@ -58,21 +58,22 @@ export function useSales(filters = {}) {
   const totalPaginas = computed(() => salesQuery.data.value?.last_page ?? 1)
   const totalRegistros = computed(() => salesQuery.data.value?.total ?? 0)
 
-  // Métricas calculadas
-  const totalVendido = computed(() =>
-    vendas.value
-      .filter((v) => v.status !== 'cancelled')
-      .reduce((s, v) => s + Number(v.total || 0), 0),
-  )
+  // 🔴 CORRIGIDO: as métricas dos cards (Faturamento, Aguardando pagamento,
+  // Ticket médio) NÃO podem ser calculadas em cima de `vendas.value`, porque
+  // esse array é só a PÁGINA atual (ex.: 8 de 30 vendas). Calculando aqui,
+  // os cards mostravam números da página exibida, não do total filtrado.
+  //
+  // Agora eles vêm prontos do backend, no bloco `summary` que o
+  // SaleController calcula sobre a query INTEIRA (já com os filtros
+  // aplicados), antes de paginar — então ficam corretos independente de
+  // quantas páginas existirem ou em qual página o usuário está.
+  const summary = computed(() => salesQuery.data.value?.summary ?? null)
 
-  const aguardandoPagamento = computed(
-    () => vendas.value.filter((v) => v.status === 'pending').length,
-  )
+  const totalVendido = computed(() => Number(summary.value?.faturamento_concluido ?? 0))
 
-  const ticketMedio = computed(() => {
-    const concluidas = vendas.value.filter((v) => v.status !== 'cancelled').length
-    return concluidas ? totalVendido.value / concluidas : 0
-  })
+  const aguardandoPagamento = computed(() => Number(summary.value?.aguardando_pagamento ?? 0))
+
+  const ticketMedio = computed(() => Number(summary.value?.ticket_medio ?? 0))
 
   // 5. Busca de uma venda específica com os itens completos (usado na edição)
   // ATENÇÃO: assume que o backend expõe GET /sales/{id}. Se o seu saleService.js
@@ -90,7 +91,7 @@ export function useSales(filters = {}) {
     isError: salesQuery.isError,
     refetch: salesQuery.refetch,
 
-    // Métricas
+    // Métricas (calculadas no backend sobre o total filtrado, não a página)
     totalVendido,
     aguardandoPagamento,
     ticketMedio,
