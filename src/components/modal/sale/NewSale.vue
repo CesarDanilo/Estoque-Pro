@@ -662,6 +662,57 @@ function resetar() {
   pagamento.value = ''
   pagamentoInvalido.value = false
   indiceAtivo.value = -1
+
+  clearTimeout(timeoutDestaqueItem)
+  itemRecemAdicionadoId.value = null
+  refsItensVenda.value = {}
+}
+
+// -----------------------------------------------------------------------------
+// SCROLL / DESTAQUE DO ITEM RECÉM-ADICIONADO
+// -----------------------------------------------------------------------------
+//
+// Guarda o id do último produto adicionado (ou incrementado) no
+// carrinho. Usado para:
+//
+// 1. Rolar a lista de "Itens da venda" até a linha desse produto;
+// 2. Destacar brevemente essa linha, para o usuário identificar
+//    visualmente qual item acabou de entrar/mudar na venda.
+//
+const itemRecemAdicionadoId = ref(null)
+
+// Guarda o elemento <li> de cada item do carrinho, indexado pelo id
+// do produto, para conseguirmos chamar scrollIntoView() nele.
+const refsItensVenda = ref({})
+
+let timeoutDestaqueItem = null
+
+function definirRefItemVenda(el, id) {
+  if (el) {
+    refsItensVenda.value[id] = el
+  } else {
+    delete refsItensVenda.value[id]
+  }
+}
+
+function rolarEDestacarItem(id) {
+  itemRecemAdicionadoId.value = id
+
+  // Espera o DOM atualizar (item novo ou reordenado) antes de rolar.
+  nextTick(() => {
+    refsItensVenda.value[id]?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+    })
+  })
+
+  // Remove o destaque depois de um tempo, sem acumular timers caso
+  // o usuário adicione vários produtos rapidamente.
+  clearTimeout(timeoutDestaqueItem)
+
+  timeoutDestaqueItem = setTimeout(() => {
+    itemRecemAdicionadoId.value = null
+  }, 1500)
 }
 
 // -----------------------------------------------------------------------------
@@ -700,6 +751,8 @@ function adicionar(id) {
       estoque: qtdEstoque,
     })
   }
+
+  rolarEDestacarItem(id)
 }
 
 function remover(id) {
@@ -1250,7 +1303,17 @@ async function salvar() {
 
               <div v-else class="max-h-[220px] overflow-y-auto rounded-lg border border-border">
                 <ul class="divide-y divide-border">
-                  <li v-for="i in itens" :key="i.id" class="space-y-2 bg-surface px-3 py-2.5">
+                  <li
+                    v-for="i in itens"
+                    :key="i.id"
+                    :ref="(el) => definirRefItemVenda(el, i.id)"
+                    class="space-y-2 rounded-md px-3 py-2.5 transition-colors duration-500"
+                    :class="
+                      i.id === itemRecemAdicionadoId
+                        ? 'bg-primary/10 ring-1 ring-inset ring-primary'
+                        : 'bg-surface'
+                    "
+                  >
                     <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                       <div class="min-w-0">
                         <p class="truncate text-sm font-medium">

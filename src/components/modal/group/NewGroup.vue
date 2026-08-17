@@ -77,6 +77,11 @@ function preencherFormulario() {
   } else {
     form.nome = ''
     form.descricao = ''
+
+    // Todo grupo novo nasce ativo. Como o campo "Grupo ativo" só é
+    // exibido em modo de edição (ver template), não faz sentido
+    // perguntar isso na criação — o usuário ativa/desativa depois,
+    // se precisar.
     form.ativo = true
   }
 }
@@ -209,7 +214,13 @@ function salvar() {
           </div>
         </section>
 
-        <section class="space-y-4 border-t border-border pt-5">
+        <!--
+          "Grupo ativo" só aparece quando estamos EDITANDO um grupo
+          já existente. Na criação, todo grupo novo já nasce ativo
+          por padrão (form.ativo = true), então não faz sentido
+          perguntar isso nesse momento.
+        -->
+        <section v-if="editando" class="space-y-4 border-t border-border pt-5">
           <div
             class="flex items-center justify-between gap-3 rounded-lg border border-input px-4 py-3"
           >
