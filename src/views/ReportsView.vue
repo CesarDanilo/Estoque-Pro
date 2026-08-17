@@ -29,6 +29,7 @@ import {
   Filler,
 } from 'chart.js'
 import { Bar, Doughnut, Line } from 'vue-chartjs'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 
 import {
   useSalesReport,
@@ -48,6 +49,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   Filler,
+  ChartDataLabels,
 )
 
 const queryClient = useQueryClient()
@@ -174,6 +176,19 @@ const formatCurrency = (val) => {
   }).format(val || 0)
 }
 
+// -----------------------------------------------------------------------
+// 🔴 AQUI: formatter compacto pra rótulos fixos não estourarem o gráfico
+// em valores grandes (ex: R$ 12.450,00 -> R$ 12,5k). Usado só nos labels
+// fixos; tooltip e cards continuam com o valor completo via formatCurrency.
+// -----------------------------------------------------------------------
+const formatCurrencyCompact = (val) => {
+  const num = val || 0
+  if (Math.abs(num) >= 1000) {
+    return `R$ ${(num / 1000).toFixed(1).replace('.', ',')}k`
+  }
+  return formatCurrency(num)
+}
+
 const handleRefresh = () => {
   queryClient.invalidateQueries({ queryKey: ['reports'] })
 }
@@ -199,6 +214,14 @@ const filteredReplenishProducts = computed(() => {
 // Cores dinâmicas dos gráficos baseadas no tema ativo
 const chartTextColor = computed(() => (isDark.value ? '#a1a1aa' : '#71717a'))
 const chartGridColor = computed(() => (isDark.value ? '#27272a' : '#e4e4e7'))
+
+// -----------------------------------------------------------------------
+// 🔴 AQUI: cor dos rótulos fixos (datalabels) sobre elementos "sólidos"
+// (barras coloridas, fatias do doughnut) — precisa de contraste forte,
+// então usamos branco/quase-preto fixo, não a cor de texto do tema.
+// -----------------------------------------------------------------------
+const datalabelColorOnSolid = '#ffffff'
+const datalabelColorOnLight = computed(() => (isDark.value ? '#f4f4f5' : '#09090b'))
 
 // -----------------------------------------------------------------------
 // 🔴 AQUI: geração de cor DETERMINÍSTICA por nome do grupo (hash), em vez
@@ -259,6 +282,9 @@ const salesLineChartData = computed(() => {
 const lineChartOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
+  layout: {
+    padding: { top: 24 },
+  },
   plugins: {
     legend: { display: false },
     tooltip: {
@@ -272,6 +298,16 @@ const lineChartOptions = computed(() => ({
       callbacks: {
         label: (context) => `Valor: ${formatCurrency(context.raw)}`,
       },
+    },
+    // 🔴 AQUI: valores fixos acima de cada ponto da linha
+    datalabels: {
+      display: true,
+      color: '#10b981',
+      anchor: 'end',
+      align: 'top',
+      offset: 6,
+      font: { size: 10, weight: 'bold' },
+      formatter: (value) => formatCurrencyCompact(value),
     },
   },
   scales: {
@@ -309,7 +345,22 @@ const salesByGroupChartData = computed(() => {
 const verticalBarOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
-  plugins: { legend: { display: false } },
+  layout: {
+    padding: { top: 24 },
+  },
+  plugins: {
+    legend: { display: false },
+    // 🔴 AQUI: valor fixo em cima de cada barra vertical
+    datalabels: {
+      display: true,
+      color: datalabelColorOnLight.value,
+      anchor: 'end',
+      align: 'top',
+      offset: 4,
+      font: { size: 10, weight: 'bold' },
+      formatter: (value) => value,
+    },
+  },
   scales: {
     x: { grid: { display: false }, ticks: { color: chartTextColor.value, font: { size: 11 } } },
     y: {
@@ -339,13 +390,41 @@ const horizontalBarOptions = computed(() => ({
   indexAxis: 'y',
   responsive: true,
   maintainAspectRatio: false,
-  plugins: { legend: { display: false } },
+  layout: {
+    padding: { right: 48 },
+  },
+  plugins: {
+    legend: { display: false },
+    // 🔴 AQUI: valor fixo ao final de cada barra horizontal
+    datalabels: {
+      display: true,
+      color: datalabelColorOnLight.value,
+      anchor: 'end',
+      align: 'right',
+      offset: 4,
+      font: { size: 10, weight: 'bold' },
+      formatter: (value) => value,
+    },
+  },
   scales: {
     x: {
       grid: { color: chartGridColor.value },
       ticks: { color: chartTextColor.value, font: { size: 11 } },
     },
     y: { grid: { display: false }, ticks: { color: chartTextColor.value, font: { size: 11 } } },
+  },
+}))
+
+// 🔴 AQUI: opções específicas do gráfico de fornecedores — mesma base do
+// horizontalBarOptions, mas o rótulo formata como moeda em vez de número cru.
+const purchasesSupplierChartOptions = computed(() => ({
+  ...horizontalBarOptions.value,
+  plugins: {
+    ...horizontalBarOptions.value.plugins,
+    datalabels: {
+      ...horizontalBarOptions.value.plugins.datalabels,
+      formatter: (value) => formatCurrencyCompact(value),
+    },
   },
 }))
 
@@ -451,6 +530,13 @@ const doughnutOptions = computed(() => ({
         boxWidth: 12,
         padding: 12,
       },
+    },
+    // 🔴 AQUI: valor fixo dentro de cada fatia (some sozinho se a fatia for 0)
+    datalabels: {
+      display: (context) => context.dataset.data[context.dataIndex] > 0,
+      color: datalabelColorOnSolid,
+      font: { size: 11, weight: 'bold' },
+      formatter: (value) => value,
     },
   },
   cutout: '70%',
@@ -846,7 +932,7 @@ const doughnutOptions = computed(() => ({
           </p>
 
           <div class="h-72 w-full">
-            <Bar :data="purchasesSupplierChartData" :options="horizontalBarOptions" />
+            <Bar :data="purchasesSupplierChartData" :options="purchasesSupplierChartOptions" />
           </div>
         </div>
 
