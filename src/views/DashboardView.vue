@@ -44,7 +44,7 @@ const {
   revalidarDashboard,
 } = useDashboard()
 
-const { erro } = useFeedback()
+const { sucesso, erro } = useFeedback()
 
 // --- Helper Functions ---
 function brl(valor) {
@@ -128,8 +128,20 @@ async function onProdutoSalvo() {
   await revalidarDashboard()
 }
 
-async function onVendaSalva() {
+// 🔴 AQUI: NewSale emite o evento "created" (e não "salvo"), e é aqui que
+// disparamos a notificação de sucesso avisando que a venda já pode ser
+// vista no módulo de Vendas.
+async function onVendaSalva(vendaCriada) {
   await revalidarDashboard()
+
+  const codigo = vendaCriada?.data?.code || vendaCriada?.code
+
+  sucesso(
+    'Venda registrada com sucesso!',
+    codigo
+      ? `A venda #${codigo} já está disponível no módulo de Vendas.`
+      : 'A venda já está disponível no módulo de Vendas.',
+  )
 }
 
 // --- Gráficos ---
@@ -495,7 +507,8 @@ const chartOptionsGrupo = {
     @salvo="onProdutoSalvo"
   />
 
-  <NewSale v-model:open="modalVendaAberto" :sale="vendaEmEdicao" @salvo="onVendaSalva" />
+  <!-- 🔴 AQUI: trocado de "@salvo" para "@created", que é o evento real emitido pelo NewSale.vue -->
+  <NewSale v-model:open="modalVendaAberto" :sale="vendaEmEdicao" @created="onVendaSalva" />
 </template>
 
 <style scoped>
