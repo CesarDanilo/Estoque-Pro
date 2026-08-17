@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Line, Bar } from 'vue-chartjs'
+import { Chart as ChartJS } from 'chart.js'
+import ChartDataLabels from 'chartjs-plugin-datalabels'
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -28,6 +30,14 @@ import { useDashboard } from '@/composables/useDashboard'
 import { useFeedback } from '@/composables/useFeedBack'
 import api from '@/services/api'
 
+// -----------------------------------------------------------------------
+// 🔴 AQUI: registra o plugin de rótulos fixos (datalabels) neste arquivo.
+// Se o projeto já registra outros elementos do Chart.js globalmente
+// (main.js, plugin, etc.), esse registro aqui só garante que o
+// datalabels específico funcione mesmo que não tenha sido incluído lá.
+// -----------------------------------------------------------------------
+ChartJS.register(ChartDataLabels)
+
 onMounted(() => {
   document.title = 'Dashboard — Estoque Pro'
 })
@@ -49,6 +59,19 @@ const { sucesso, erro } = useFeedback()
 // --- Helper Functions ---
 function brl(valor) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0)
+}
+
+// -----------------------------------------------------------------------
+// 🔴 AQUI: versão compacta do formatador de moeda, usada só nos rótulos
+// fixos (datalabels) pra não estourar o gráfico com valores grandes.
+// Ex: R$ 12.450,00 -> R$ 12,5k. Tooltip e cards continuam com brl() normal.
+// -----------------------------------------------------------------------
+function brlCompacto(valor) {
+  const num = valor || 0
+  if (Math.abs(num) >= 1000) {
+    return `R$ ${(num / 1000).toFixed(1).replace('.', ',')}k`
+  }
+  return brl(num)
 }
 
 function dataBR(dataString) {
@@ -169,6 +192,10 @@ const chartOptionsVendasCompras = {
   responsive: true,
   maintainAspectRatio: false,
   interaction: { mode: 'index', intersect: false },
+  // 🔴 AQUI: espaço extra no topo pra caber o rótulo fixo acima dos pontos
+  layout: {
+    padding: { top: 24 },
+  },
   plugins: {
     legend: {
       display: true,
@@ -188,6 +215,16 @@ const chartOptionsVendasCompras = {
       callbacks: {
         label: (ctx) => `${ctx.dataset.label}: ${brl(ctx.parsed.y)}`,
       },
+    },
+    // 🔴 AQUI: valor fixo acima de cada ponto da linha, sempre visível
+    datalabels: {
+      display: true,
+      color: '#00BC7D',
+      anchor: 'end',
+      align: 'top',
+      offset: 6,
+      font: { size: 10, weight: 'bold' },
+      formatter: (value) => brlCompacto(value),
     },
   },
   scales: {
@@ -227,12 +264,26 @@ const chartOptionsGrupo = {
   indexAxis: 'y',
   responsive: true,
   maintainAspectRatio: false,
+  // 🔴 AQUI: espaço extra à direita pra caber o rótulo fixo no fim da barra
+  layout: {
+    padding: { right: 56 },
+  },
   plugins: {
     legend: { display: false },
     tooltip: {
       callbacks: {
         label: (ctx) => brl(ctx.parsed.x),
       },
+    },
+    // 🔴 AQUI: valor fixo ao final de cada barra horizontal, sempre visível
+    datalabels: {
+      display: true,
+      color: '#e4e4e7',
+      anchor: 'end',
+      align: 'right',
+      offset: 4,
+      font: { size: 10, weight: 'bold' },
+      formatter: (value) => brlCompacto(value),
     },
   },
   scales: {
