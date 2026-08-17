@@ -160,6 +160,7 @@ const selectedPeriod = computed(() => {
 
 const searchProductSales = ref('')
 const searchProductPurchases = ref('')
+const searchProductGroups = ref('')
 
 const salesQuery = useSalesReport(selectedPeriod)
 const purchasesQuery = usePurchasesReport(selectedPeriod)
@@ -198,6 +199,28 @@ const filteredReplenishProducts = computed(() => {
 // Cores dinâmicas dos gráficos baseadas no tema ativo
 const chartTextColor = computed(() => (isDark.value ? '#a1a1aa' : '#71717a'))
 const chartGridColor = computed(() => (isDark.value ? '#27272a' : '#e4e4e7'))
+
+// -----------------------------------------------------------------------
+// 🔴 AQUI: geração de cor DETERMINÍSTICA por nome do grupo (hash), em vez
+// de um array fixo de 7 cores. Funciona igual com 7, 100 ou 1000 grupos:
+// nunca "acaba", e o mesmo grupo sempre recebe a mesma cor, independente
+// da ordem em que a API retornar os dados.
+// -----------------------------------------------------------------------
+function hashString(str) {
+  let hash = 0
+  const texto = String(str || '')
+  for (let i = 0; i < texto.length; i++) {
+    hash = texto.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return Math.abs(hash)
+}
+
+function corPorNome(nome) {
+  const matiz = hashString(nome) % 360
+  const saturacao = 65
+  const luminosidade = isDark.value ? 58 : 45
+  return `hsl(${matiz}, ${saturacao}%, ${luminosidade}%)`
+}
 
 const salesLineChartData = computed(() => {
   const rawData = salesQuery.data.value?.vendas_por_dia?.chart || []
@@ -326,23 +349,41 @@ const horizontalBarOptions = computed(() => ({
   },
 }))
 
-const productsGroupChartData = computed(() => {
+// -----------------------------------------------------------------------
+// 🔴 AQUI: "Produtos por grupo" deixou de ser Doughnut e virou Bar
+// horizontal com scroll — o mesmo padrão de "Compras por fornecedor".
+// Isso escala de 3 a 1000+ grupos sem virar uma pizza ilegível.
+// A altura do container cresce dinamicamente com a quantidade de grupos,
+// e cada barra recebe sua cor determinística via corPorNome().
+// -----------------------------------------------------------------------
+const ALTURA_POR_BARRA_GRUPO = 32
+const ALTURA_MINIMA_GRUPO = 240
+
+const gruposFiltrados = computed(() => {
   const rawData = productsQuery.data.value?.produtos_por_grupo || []
+  const ordenado = [...rawData].sort((a, b) => b.quantidade - a.quantidade)
+
+  if (!searchProductGroups.value) return ordenado
+
+  const termo = searchProductGroups.value.toLowerCase()
+  return ordenado.filter((item) => (item.grupo || '').toLowerCase().includes(termo))
+})
+
+const alturaGraficoGrupos = computed(() =>
+  Math.max(ALTURA_MINIMA_GRUPO, gruposFiltrados.value.length * ALTURA_POR_BARRA_GRUPO),
+)
+
+const productsGroupChartData = computed(() => {
+  const lista = gruposFiltrados.value
   return {
-    labels: rawData.map((item) => item.grupo),
+    labels: lista.map((item) => item.grupo),
     datasets: [
       {
-        data: rawData.map((item) => item.quantidade),
-        backgroundColor: [
-          '#10b981',
-          '#3b82f6',
-          '#f59e0b',
-          '#8b5cf6',
-          '#ec4899',
-          '#06b6d4',
-          '#84cc16',
-        ],
-        borderWidth: 0,
+        label: 'Produtos',
+        data: lista.map((item) => item.quantidade),
+        backgroundColor: lista.map((item) => corPorNome(item.grupo)),
+        borderRadius: 4,
+        barThickness: 18,
       },
     ],
   }
@@ -870,17 +911,40 @@ const doughnutOptions = computed(() => ({
 
       <template v-else-if="productsQuery.data.value">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- 🔴 AQUI: "Produtos por grupo" agora é uma barra horizontal com
+               scroll (igual "Compras por fornecedor"), com busca embutida.
+               Suporta qualquer quantidade de grupos sem virar ilegível. -->
           <div
             class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
           >
             <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">Produtos por grupo</h3>
             <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] mb-4">
-              Distribuição percentual por grupo cadastrado.
+              {{ gruposFiltrados.length }} grupo(s) cadastrado(s).
             </p>
 
-            <div class="h-60 w-full flex items-center justify-center">
-              <Doughnut :data="productsGroupChartData" :options="doughnutOptions" />
+            <div class="relative mb-3">
+              <Search
+                class="w-3.5 h-3.5 absolute left-3 top-2.5 text-[#71717a] dark:text-[#a1a1aa]"
+              />
+              <input
+                v-model="searchProductGroups"
+                type="text"
+                placeholder="Buscar grupo..."
+                class="w-full bg-[#f8fafc] dark:bg-[#09090b] border border-[#e4e4e7] dark:border-[#27272a] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#09090b] dark:text-white placeholder-[#a1a1aa] focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
             </div>
+
+            <div
+              v-if="gruposFiltrados.length > 0"
+              class="max-h-72 overflow-y-auto pr-1.5 custom-scrollbar"
+            >
+              <div :style="{ height: alturaGraficoGrupos + 'px' }">
+                <Bar :data="productsGroupChartData" :options="horizontalBarOptions" />
+              </div>
+            </div>
+            <p v-else class="text-xs text-[#71717a] dark:text-[#a1a1aa] py-6 text-center">
+              Nenhum grupo encontrado.
+            </p>
           </div>
 
           <div
