@@ -803,16 +803,54 @@ async function pessoaCriada(novaPessoa) {
 // -----------------------------------------------------------------------------
 // CADASTRO / EDIÇÃO DE PRODUTO
 // -----------------------------------------------------------------------------
+//
+// CORREÇÃO:
+//
+// O template escuta três eventos do NewProduct
+// (@created, @updated, @salvo) e todos apontam
+// para esta mesma função.
+//
+// Se o componente filho emitir mais de um desses
+// eventos para a mesma ação de salvar (ex.: emite
+// "created" E também "salvo" no mesmo submit), esta
+// função rodava duas vezes e `adicionar()` era chamado
+// duas vezes -> o item entrava no carrinho com
+// quantidade 2 em vez de 1.
+//
+// A trava abaixo garante que, mesmo que dois eventos
+// disparem para a mesma ação, só processamos uma vez.
+// -----------------------------------------------------------------------------
+
+let ultimoProdutoProcessadoId = null
+let processandoProduto = false
 
 async function produtoCriado(novoProduto) {
   const prodObj = novoProduto?.data || novoProduto
 
-  if (typeof buscarProdutos === 'function') {
-    await buscarProdutos()
+  // Evita reprocessar o mesmo produto se dois eventos
+  // (ex: @created e @salvo) dispararem para a mesma ação.
+  if (processandoProduto && prodObj?.id === ultimoProdutoProcessadoId) {
+    return
   }
 
-  if (prodObj?.id) {
-    adicionar(prodObj.id)
+  processandoProduto = true
+  ultimoProdutoProcessadoId = prodObj?.id ?? null
+
+  try {
+    if (typeof buscarProdutos === 'function') {
+      await buscarProdutos()
+    }
+
+    if (prodObj?.id) {
+      adicionar(prodObj.id)
+    }
+  } finally {
+    // Libera a trava só depois que os eventos síncronos
+    // desse mesmo submit já tiverem disparado.
+    setTimeout(() => {
+      processandoProduto = false
+      ultimoProdutoProcessadoId = null
+    }, 300)
   }
 }
 
