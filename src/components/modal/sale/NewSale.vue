@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import {
   ArrowUpRight,
   Loader2,
@@ -84,6 +84,39 @@ const buscaBruta = ref('')
 const itens = ref([])
 const pagamento = ref('')
 
+// Fica true quando o usuário tenta salvar sem escolher a forma de
+// pagamento. Usado para destacar o campo em vermelho até que ele
+// seja preenchido.
+const pagamentoInvalido = ref(false)
+
+watch(pagamento, (valor) => {
+  if (valor) {
+    pagamentoInvalido.value = false
+  }
+})
+
+// -----------------------------------------------------------------------------
+// FOCO AUTOMÁTICO NO CAMPO DE BUSCA DE PRODUTO
+// -----------------------------------------------------------------------------
+//
+// Ref do input "Buscar produto para a venda". Assim que o modal
+// termina de abrir (e de carregar pessoas/produtos/itens da venda,
+// se for edição), o foco vai automaticamente para este campo.
+//
+const campoBuscaProduto = ref(null)
+
+function focarBuscaProduto() {
+  // nextTick garante que o DOM já foi atualizado (input renderizado).
+  // O setTimeout extra evita que o próprio Dialog (que também move o
+  // foco ao abrir, por acessibilidade/focus-trap) "roube" o foco do
+  // nosso input logo em seguida.
+  nextTick(() => {
+    setTimeout(() => {
+      campoBuscaProduto.value?.focus()
+    }, 150)
+  })
+}
+
 // -----------------------------------------------------------------------------
 // MODAIS
 // -----------------------------------------------------------------------------
@@ -140,6 +173,10 @@ watch(
     if (props.sale) {
       await carregarVendaParaEdicao(props.sale)
     }
+
+    // Só foca depois que pessoas/produtos (e itens da venda, se edição)
+    // já terminaram de carregar.
+    focarBuscaProduto()
   },
 )
 
@@ -623,6 +660,7 @@ function resetar() {
   acrescimoPercentual.setValue('')
 
   pagamento.value = ''
+  pagamentoInvalido.value = false
   indiceAtivo.value = -1
 }
 
@@ -884,6 +922,8 @@ async function salvar() {
   }
 
   if (!pagamento.value) {
+    pagamentoInvalido.value = true
+
     erro('Forma de pagamento não informada', 'Selecione como o cliente vai pagar.')
 
     return
@@ -1089,6 +1129,7 @@ async function salvar() {
                 <div class="relative">
                   <input
                     id="busca-produto"
+                    ref="campoBuscaProduto"
                     v-model="busca"
                     type="text"
                     placeholder="Buscar por nome ou código…"
@@ -1394,8 +1435,18 @@ async function salvar() {
                   <span class="text-destructive"> * </span>
                 </label>
 
-                <Select v-model="pagamento">
-                  <SelectTrigger id="pagamento" class="h-10 w-full cursor-pointer bg-surface">
+                <Select v-model="pagamento" required>
+                  <SelectTrigger
+                    id="pagamento"
+                    required
+                    :aria-invalid="pagamentoInvalido"
+                    class="h-10 w-full cursor-pointer bg-surface"
+                    :class="
+                      pagamentoInvalido
+                        ? 'border-destructive text-destructive ring-1 ring-destructive focus:ring-destructive'
+                        : ''
+                    "
+                  >
                     <SelectValue placeholder="Como o cliente vai pagar?" />
                   </SelectTrigger>
 
@@ -1413,6 +1464,15 @@ async function salvar() {
                     </SelectItem>
                   </SelectContent>
                 </Select>
+
+                <p
+                  v-if="pagamentoInvalido"
+                  class="mt-1.5 flex items-center gap-1.5 text-xs text-destructive"
+                >
+                  <TriangleAlert class="size-3.5" aria-hidden="true" />
+
+                  Selecione uma forma de pagamento.
+                </p>
               </div>
 
               <!-- RESUMO -->
