@@ -853,12 +853,9 @@ const doughnutOptions = computed(() => ({
         <div
           class="bg-white dark:bg-[#18181b] p-5 rounded-xl border border-[#e4e4e7] dark:border-[#27272a] shadow-sm"
         >
-          <h3 class="text-sm font-semibold text-[#09090b] dark:text-white">
+          <h3 class="text-sm mb-4 font-semibold text-[#09090b] dark:text-white">
             Produtos vendidos que precisam de reposição
           </h3>
-          <p class="text-xs text-[#71717a] dark:text-[#a1a1aa] mb-4">
-            Clique em um produto para editar o cadastro.
-          </p>
 
           <div class="relative mb-4">
             <Search
