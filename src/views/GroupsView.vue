@@ -45,6 +45,7 @@ import PageHeader from '@/components/page-shell/PageHeader.vue'
 import Section from '@/components/page-shell/Section.vue'
 import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import GroupModal from '@/components/modal/group/NewGroup.vue'
+import { useDebounceFn } from '@/composables/useDebounce'
 import { useFeedback } from '@/composables/useFeedBack'
 import { useGroups } from '@/composables/useGroups'
 
@@ -54,6 +55,7 @@ onMounted(() => {
 
 const NOME_BUSCA_MAX = 60
 const busca = ref('')
+const buscaAplicada = ref('')
 const pagina = ref(1)
 
 // Estado de Filtro de Status
@@ -64,7 +66,7 @@ const ordemCampo = ref('nome')
 const ordemDirecao = ref('asc') // 'asc' | 'desc'
 
 // TanStack Query
-const { groupsQuery, updateMutation, deleteMutation } = useGroups(busca, pagina)
+const { groupsQuery, updateMutation, deleteMutation } = useGroups(buscaAplicada, pagina, filtroStatus)
 
 const modalAberto = ref(false)
 const grupoEditando = ref(null)
@@ -80,16 +82,10 @@ const meta = computed(() => ({
   paginaAtual: groupsQuery.data.value?.current_page || 1,
   totalPaginas: groupsQuery.data.value?.last_page || 1,
   total: groupsQuery.data.value?.total || 0,
-  totalAtivos:
-    groupsQuery.data.value?.total_ativos ??
-    groupsQuery.data.value?.data?.filter((g) => g.active).length ??
-    0,
+  totalGrupos: groupsQuery.data.value?.total_grupos ?? 0,
+  totalAtivos: groupsQuery.data.value?.total_ativos ?? 0,
+  totalProdutos: groupsQuery.data.value?.total_produtos ?? 0,
 }))
-
-// Produtos Totais
-const totalProdutos = computed(() => {
-  return listaGruposBruta.value.reduce((acc, g) => acc + (g.produtos || 0), 0)
-})
 
 // Função para alternar a ordenação pelas colunas da tabela
 function alternarOrdenacao(campo) {
@@ -101,18 +97,10 @@ function alternarOrdenacao(campo) {
   }
 }
 
-// Lista Filtrada e Ordenada
+// Lista ordenada. Busca e status são aplicados pela API, para valerem em todas as páginas.
 const listaGrupos = computed(() => {
-  let resultado = [...listaGruposBruta.value]
+  const resultado = [...listaGruposBruta.value]
 
-  // 1. Filtro por Status
-  if (filtroStatus.value === 'ativos') {
-    resultado = resultado.filter((g) => g.active)
-  } else if (filtroStatus.value === 'inativos') {
-    resultado = resultado.filter((g) => !g.active)
-  }
-
-  // 2. Ordenação por Coluna
   resultado.sort((a, b) => {
     let valorA, valorB
 
@@ -136,8 +124,15 @@ const listaGrupos = computed(() => {
   return resultado
 })
 
-// Reseta para a página 1 ao alterar filtros
-watch([busca, filtroStatus], () => {
+// Só consulta a API depois que o usuário para de digitar
+const aplicarBusca = useDebounceFn((valor) => {
+  buscaAplicada.value = valor
+  pagina.value = 1
+}, 400)
+watch(busca, aplicarBusca)
+
+// Reseta para a página 1 ao alterar o status
+watch(filtroStatus, () => {
   pagina.value = 1
 })
 
@@ -244,7 +239,7 @@ function confirmarExclusao() {
               Total de Grupos
             </p>
             <p class="mt-1 text-2xl font-bold text-foreground">
-              {{ meta.total }}
+              {{ meta.totalGrupos }}
             </p>
           </div>
           <div class="rounded-lg bg-emerald-500/10 p-2.5 text-emerald-500">
@@ -272,7 +267,7 @@ function confirmarExclusao() {
               Produtos Cadastrados
             </p>
             <p class="mt-1 text-2xl font-bold text-foreground">
-              {{ totalProdutos }}
+              {{ meta.totalProdutos }}
             </p>
           </div>
           <div class="rounded-lg bg-purple-500/10 p-2.5 text-purple-500">

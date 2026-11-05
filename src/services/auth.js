@@ -22,6 +22,21 @@ export async function login({ email, senha }) {
   return data
 }
 
+export async function solicitarRecuperacaoSenha({ email }) {
+  const { data } = await api.post('/forgot-password', { email })
+  return data
+}
+
+export async function redefinirSenha({ token, email, senha }) {
+  const { data } = await api.post('/reset-password', {
+    token,
+    email,
+    password: senha,
+    password_confirmation: senha,
+  })
+  return data
+}
+
 export async function logout() {
   await api.post('/logout')
   localStorage.removeItem(TOKEN_KEY)

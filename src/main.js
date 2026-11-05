@@ -31,5 +31,6 @@ app.use(VueQueryPlugin, {
 // 3. Inicializa a store do tema (agora que o Pinia já está ativo)
 useThemeStore().iniciar()
 
-// 4. Monta a aplicação
-app.mount('#app')
+// 4. Monta a aplicação só depois da primeira navegação, para o layout privado
+//    não renderizar (e chamar /user) nas rotas públicas
+router.isReady().then(() => app.mount('#app'))

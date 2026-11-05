@@ -36,8 +36,8 @@ import StatusPill from '@/components/ui-kit/StatusPill.vue'
 import NewProduct from '@/components/modal/product/NewProduct.vue'
 
 import { useFeedback } from '@/composables/useFeedBack'
+import { useAllGroups } from '@/composables/useGroups'
 import { productService } from '@/services/productService'
-import { groupService } from '@/services/groupService'
 
 onMounted(() => {
   document.title = 'Produtos — Estoque Pro'
@@ -96,18 +96,10 @@ function resetPag() {
 }
 
 // ---- TanStack Query: Carregar Grupos para o Filtro ----
-const { data: listaGruposData } = useQuery({
-  queryKey: ['groups', 'filtro'],
-  queryFn: () => groupService.listar({ per_page: 100 }),
-  staleTime: 1000 * 60 * 10,
-})
+const gruposQuery = useAllGroups()
 
 const listaGrupos = computed(() => {
-  const payload = listaGruposData?.value
-  if (Array.isArray(payload)) return payload
-  if (Array.isArray(payload?.data)) return payload.data
-  if (Array.isArray(payload?.data?.data)) return payload.data.data
-  return []
+  return gruposQuery.data.value ?? []
 })
 
 // ---- TanStack Query: Buscar Lista de Produtos ----

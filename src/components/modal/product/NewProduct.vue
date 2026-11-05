@@ -24,7 +24,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 import { useFeedback } from '@/composables/useFeedBack'
-import { useGroups } from '@/composables/useGroups'
+import { useAllGroups } from '@/composables/useGroups'
 import { productService } from '@/services/productService'
 import { supplierService } from '@/services/supplierService'
 
@@ -43,7 +43,7 @@ const emit = defineEmits(['update:open', 'created', 'updated', 'salvo'])
 const queryClient = useQueryClient()
 const { sucesso, erro } = useFeedback()
 
-const { groupsQuery } = useGroups()
+const groupsQuery = useAllGroups()
 
 const modalGrupoAberto = ref(false)
 const modalFornecedorAberto = ref(false)
@@ -64,11 +64,7 @@ const form = reactive({
 const editando = computed(() => !!props.produto?.id)
 
 const listaGrupos = computed(() => {
-  const dados = groupsQuery?.data?.value
-
-  if (Array.isArray(dados)) return dados
-
-  return dados?.data || []
+  return groupsQuery?.data?.value ?? []
 })
 
 const gruposOrdenados = computed(() => {

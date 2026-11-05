@@ -222,6 +222,7 @@ function handleTeclaEsc(evento) {
 }
 
 onMounted(() => {
+  document.title = 'Vendas — Estoque Pro'
   document.addEventListener('mousedown', handleClickFora)
   document.addEventListener('keydown', handleTeclaEsc)
 })
@@ -524,7 +525,7 @@ async function executarExclusao() {
       </MetricCard>
       <MetricCard
         rotulo="Aguardando pagamento"
-        :valor="aguardandoPagamento"
+        :valor="String(aguardandoPagamento)"
         tom="warning"
         :apoio="
           typeof vendasAguardandoPagamento === 'number'

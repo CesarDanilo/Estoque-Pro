@@ -31,10 +31,10 @@ import {
 } from '@/components/ui/select'
 
 import { useFeedback } from '@/composables/useFeedBack'
+import { useAllGroups } from '@/composables/useGroups'
 import { usePurchases } from '@/composables/usePurchases'
 import { supplierService } from '@/services/supplierService'
 import { productService } from '@/services/productService'
-import { groupService } from '@/services/groupService'
 
 onMounted(() => {
   document.title = 'Nova compra — Estoque Pro'
@@ -208,14 +208,10 @@ async function atualizarFornecedorViaPersonModal(id, payload) {
 }
 
 // ---- Grupos (API) ----
-const { data: gruposData } = useQuery({
-  queryKey: ['groups'],
-  queryFn: () => groupService.listar(),
-  staleTime: 1000 * 60 * 10,
-})
+const gruposQuery = useAllGroups()
 
 const listaGrupos = computed(() => {
-  const dados = gruposData.value
+  const dados = gruposQuery.data.value
   if (Array.isArray(dados)) return dados
   return dados?.data || []
 })
