@@ -70,6 +70,7 @@ const toggleTheme = () => {
 
 // Detecta preferência salva ou do sistema ao montar
 onMounted(() => {
+  document.title = 'Relatórios — Estoque Pro'
   document.addEventListener('click', handleClickOutside)
 
   const savedTheme = localStorage.getItem('theme')

@@ -6,6 +6,18 @@ export const groupService = {
     return data
   },
 
+  // Percorre todas as páginas de /groups (a API pagina de 15 em 15)
+  async listarTodos() {
+    const primeira = await groupService.listar({ page: 1 })
+    const ultimaPagina = primeira?.last_page || 1
+
+    const demais = await Promise.all(
+      Array.from({ length: ultimaPagina - 1 }, (_, i) => groupService.listar({ page: i + 2 })),
+    )
+
+    return [primeira, ...demais].flatMap((pagina) => pagina?.data || [])
+  },
+
   async buscarPorId(id) {
     const { data } = await api.get(`/groups/${id}`)
     return data

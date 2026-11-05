@@ -229,6 +229,7 @@ function handleTeclaEsc(evento) {
 }
 
 onMounted(() => {
+  document.title = 'Compras — Estoque Pro'
   document.addEventListener('mousedown', handleClickFora)
   document.addEventListener('keydown', handleTeclaEsc)
 })
